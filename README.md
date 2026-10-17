@@ -1,7 +1,7 @@
 # BasePilot — October 2026 UI fork
 
 **This is an unofficial personal fork of [BasePilot](https://github.com/efebolukbasi/BasePilot)**,
-made by me to bring the bot up to date with the **new Clash of Clans UI (October 2026)**.
+made by **AresEmu** to bring the bot up to date with the **new Clash of Clans UI (October 2026)**.
 The original project was written for the previous UI; most of its screen detection, the
 builder menu and the wall upgrade flow stopped working after the update. This fork
 rewrites those parts and adds a few new features on top.
@@ -162,6 +162,13 @@ Automation that spends resources has to be careful, so BasePilot:
 - Saves screenshots of anything it couldn't verify to `%LOCALAPPDATA%\BasePilot\debug\`
   instead of retrying blindly.
 
+## Download
+
+Grab the latest **`BasePilot.exe`** from the
+[Releases page](https://github.com/AresEmu/BasePilot-Ares/releases) — a single
+file, no install needed (Tesseract is bundled). Windows SmartScreen may warn about an
+unsigned exe: choose *More info → Run anyway*. Read the [Disclaimer](#disclaimer) first.
+
 ## Requirements
 
 - Windows 10/11
@@ -208,8 +215,13 @@ bar layout, and keep your army at the top of Saved Recipes. See
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Original work © the upstream BasePilot author; changes in
-this fork are released under the same license. Tesseract, bundled into the exe, ships
+MIT — see [LICENSE](LICENSE).
+
+- Original BasePilot: © 2026 Efe Bolukbasi.
+- October 2026 UI update and all changes in this fork: © 2026 AresEmu, released under the
+  same MIT license.
+
+If you reuse this code, keep both copyright notices, as the MIT license requires. Tesseract, bundled into the exe, ships
 under the Apache 2.0 license.
 
 ## Disclaimer
