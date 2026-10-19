@@ -1,5 +1,9 @@
-"""Let the timed event choice expire without sending battle clicks through it."""
+"""Timed-event "Pick a Reward!" overlay (33/66/100%): pick the right-hand card.
+
+The overlay only exists while the event runs; when it never appears ``handle``
+simply returns False and the battle goes on untouched."""
 from functools import lru_cache
+import random
 import time
 import cv2
 from app.utils.common import get_resource_path
@@ -28,6 +32,14 @@ def reward_visible(frame):
     return cv2.minMaxLoc(cv2.matchTemplate(roi, art, cv2.TM_CCOEFF_NORMED))[1] >= .84
 
 
+# Right-hand (bigger, gold or grey) card, as a fraction of the frame. The card spans
+# x .62-.78, y .31-.74 at 16:9; clicks stay in the inner part of it.
+_RIGHT_CARD_X = (.672, .733)
+_RIGHT_CARD_Y = (.40, .65)
+_CARD_SETTLE = (.6, 1.2)    # cards slide in: wait before the first click
+_CARD_RETRY_AFTER = 2.5     # still open after this long → click the card once more
+
+
 class BattleRewards:
     def __init__(self, window, input_service, stop_event):
         self.window, self.input, self.stop_event = window, input_service, stop_event
@@ -38,15 +50,34 @@ class BattleRewards:
         if not reward_visible(frame):
             return False
         self.input.mouse_up(0, 0)
-        logger.info('Event reward: waiting for automatic selection')
+        if self.stop_event.wait(random.uniform(*_CARD_SETTLE)):
+            raise InterruptedError('Bot stopped by user')
+        logger.info('Event reward: picking the right-hand card')
+        clicks = 0
+        next_click = time.monotonic()
         deadline = time.monotonic() + 40
         clear = 0
         while time.monotonic() < deadline:
+            fresh = self.window.screenshot()
+            if fresh is not None and not reward_visible(fresh):
+                clear += 1
+                if clear >= 2:
+                    logger.info('Event reward closed; resuming battle')
+                    return True
+            else:
+                clear = 0
+                if fresh is not None and clicks < 2 and time.monotonic() >= next_click:
+                    self._click_right_card(fresh)
+                    clicks += 1
+                    next_click = time.monotonic() + _CARD_RETRY_AFTER
+                    if clicks == 2:
+                        logger.info('Event reward: still open after the click, retrying once')
             if self.stop_event.wait(.15):
                 raise InterruptedError('Bot stopped by user')
-            fresh = self.window.screenshot()
-            clear = clear + 1 if fresh is not None and not reward_visible(fresh) else 0
-            if clear >= 2:
-                logger.info('Event reward closed; resuming battle')
-                return True
         raise RuntimeError('Event reward remained open for 40 seconds')
+
+    def _click_right_card(self, frame):
+        h, w = frame.shape[:2]
+        x = round(w * random.uniform(*_RIGHT_CARD_X))
+        y = round(h * random.uniform(*_RIGHT_CARD_Y))
+        self.input.click_at(x, y)

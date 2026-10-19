@@ -1,8 +1,15 @@
 # Timed attack rewards
 
-The event overlay at 33%, 66%, and 100% pauses battle input while its countdown
-automatically picks a reward. The bot verifies that it disappears before resuming.
-No OCR or reward-card click is needed. Stop interrupts the wait.
+The event overlay ("Pick a Reward!") at 33%, 66%, and 100% pauses battle input.
+The bot releases any troop drag, waits 0.6–1.2 s for the cards to settle, then
+clicks a random point inside the **right-hand card** (the bigger one, gold or
+grey — its content does not matter). If the overlay is still open 2.5 s later it
+clicks once more; after that it just waits for the event countdown to pick a
+reward on its own. It verifies the overlay is gone (two clear frames) before
+resuming. No OCR is needed. Stop interrupts the wait.
+
+The overlay only exists during the timed event: when it never shows up nothing
+changes in the attack.
 
 The main strategy's End Battle and Surrender rules remain unchanged. The bot does
 not wait for later milestones. Final damage can advance during exit confirmation.

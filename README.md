@@ -80,6 +80,10 @@ packet manipulation, no modified client.
 ### 🧪 Implemented but not fully tested
 
 - **Rusher mode** on the new Build panel.
+- **Timed event "Pick a Reward!" overlay** (33/66/100% damage): the bot now clicks the
+  right-hand card (gold or grey, whatever it contains) instead of waiting ~12 s for the
+  countdown. When the event is over and the overlay never shows up, attacks run as before.
+  See [docs/event-rewards.md](docs/event-rewards.md).
 - **Sneaky Goblin** with the new troop placement (shares the Valkyrie/Super Minion code,
   not run live yet).
 - **Earthquake "Random Placement"** after the fix.

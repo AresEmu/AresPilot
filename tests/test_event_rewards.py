@@ -13,41 +13,60 @@ class EventTests(unittest.TestCase):
         self.stop.is_set.return_value = False
         self.stop.wait.return_value = False
         self.event = BattleRewards(self.window, self.input, self.stop)
+        self.frame = np.zeros((1440, 2560, 3), dtype=np.uint8)
+        self.window.screenshot.return_value = self.frame
 
     @patch('app.core.battle_rewards.reward_visible')
-    def test_expiry_is_success_without_card_click(self, visible):
+    def test_right_card_is_clicked_once(self, visible):
         visible.side_effect = [True, True, False, False]
-        self.assertTrue(self.event.handle(object()))
-        self.input.click.assert_not_called()
+        self.assertTrue(self.event.handle(self.frame))
         self.input.mouse_up.assert_called_once()
+        self.input.click_at.assert_called_once()
+        x, y = self.input.click_at.call_args.args
+        self.assertTrue(.62 * 2560 < x < .78 * 2560 and .31 * 1440 < y < .74 * 1440)
+
+    @patch('app.core.battle_rewards._CARD_RETRY_AFTER', 0)
+    @patch('app.core.battle_rewards.reward_visible')
+    def test_card_click_is_retried_only_once(self, visible):
+        visible.side_effect = [True] * 6 + [False, False]
+        self.assertTrue(self.event.handle(self.frame))
+        self.assertEqual(self.input.click_at.call_count, 2)
+
+    @patch('app.core.battle_rewards.reward_visible')
+    def test_overlay_gone_before_click_needs_no_click(self, visible):
+        visible.side_effect = [True, False, False]
+        self.assertTrue(self.event.handle(self.frame))
+        self.input.click_at.assert_not_called()
 
     @patch('app.core.battle_rewards.reward_visible')
     def test_already_expired_screen_continues(self, visible):
         visible.return_value = False
-        self.assertFalse(self.event.handle(object()))
+        self.assertFalse(self.event.handle(self.frame))
         self.input.mouse_up.assert_not_called()
+        self.input.click_at.assert_not_called()
 
     @patch('app.core.battle_rewards.reward_visible')
     def test_stop_interrupts_countdown(self, visible):
         visible.return_value = True
         self.stop.wait.return_value = True
         with self.assertRaises(InterruptedError):
-            self.event.handle(object())
-        self.input.click.assert_not_called()
+            self.event.handle(self.frame)
+        self.input.click_at.assert_not_called()
 
     @patch('app.core.battle_rewards.reward_visible')
     def test_missing_capture_is_not_dismissal(self, visible):
         visible.side_effect = [True, False, False]
-        self.window.screenshot.side_effect = [None, object(), object()]
-        self.assertTrue(self.event.handle(object()))
+        self.window.screenshot.side_effect = [None, self.frame, self.frame]
+        self.assertTrue(self.event.handle(self.frame))
         self.assertEqual(self.window.screenshot.call_count, 3)
+        self.input.click_at.assert_not_called()
 
     @patch('app.core.battle_rewards.reward_visible')
     def test_all_milestones_are_repeatable(self, visible):
         for _ in (33, 66, 100):
-            visible.side_effect = [True, False, False]
-            self.assertTrue(self.event.handle(object()))
-        self.input.click.assert_not_called()
+            visible.side_effect = [True, True, False, False]
+            self.assertTrue(self.event.handle(self.frame))
+        self.assertEqual(self.input.click_at.call_count, 3)
 
     def test_ability_clicks_do_not_redetect_undeployed_templates(self):
         frame = np.zeros((731, 1299, 3), dtype=np.uint8)
