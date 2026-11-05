@@ -1,6 +1,7 @@
 '''PySide6 GUI entry point.'''
 from __future__ import annotations
 import sys
+from app.utils.common import APP_NAME
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 from app.ui.qt.branding import apply_app_icon
@@ -8,8 +9,9 @@ from app.ui.qt.main_window import MainWindow
 from app.ui.qt.theme import apply_theme
 
 def _parse_autostart(argv):
-    '''``--autostart [--minutes N] [--walls] [--upgrades off|dry|maxer|rusher]`` →
-    (minutes, walls, upgrades) or None. ``--minutes 0`` = run until maxed (no limit).'''
+    '''``--autostart [--minutes N] [--walls] [--upgrades off|dry|maxer|rusher] [--bb]`` →
+    (minutes, walls, upgrades, builder_base) or None. ``--minutes 0`` = run until maxed
+    (no limit); ``--bb`` = Builder Base run (``--walls`` = Builder Base walls).'''
     if '--autostart' not in argv:
         return None
     minutes = 15
@@ -26,12 +28,12 @@ def _parse_autostart(argv):
                 upgrades = candidate
         except IndexError:
             pass
-    return (minutes, '--walls' in argv, upgrades)
+    return (minutes, '--walls' in argv, upgrades, '--bb' in argv)
 
 
 def run_gui():
     app = QApplication(sys.argv)
-    app.setApplicationName('BasePilot')
+    app.setApplicationName(APP_NAME)
     apply_app_icon(app)
     apply_theme(app)
     window = MainWindow()
@@ -39,7 +41,7 @@ def run_gui():
     window.show()
     autostart = _parse_autostart(sys.argv[1:])
     if autostart is not None:
-        (minutes, walls, upgrades) = autostart
-        QTimer.singleShot(3000, (lambda : window.autostart_run(minutes, walls, upgrades)))
+        (minutes, walls, upgrades, builder_base) = autostart
+        QTimer.singleShot(3000, (lambda : window.autostart_run(minutes, walls, upgrades, builder_base)))
     sys.exit(app.exec())
 

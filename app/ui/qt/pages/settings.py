@@ -1,15 +1,16 @@
 '''Settings page — profile preferences and manual game-window selection.'''
 from __future__ import annotations
 from typing import List, Optional
+from PySide6.QtCore import Qt as _Qt
 from PySide6.QtGui import QColor, QFont
-from PySide6.QtWidgets import QComboBox, QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QSpinBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QDoubleSpinBox, QSpinBox, QVBoxLayout, QWidget
 from app.config import resolve_aspect_key
 from app.services.display import DisplayService
 from app.services.window import DescendantInfo, WindowCandidate, WindowService
 from app.ui.qt.theme import SPACING, TOKENS
-from app.ui.qt.widgets import Card, PageTitle, SectionTitle, neutral_button, primary_button
+from app.ui.qt.widgets import Card, PageTitle, SectionTitle, Separator, neutral_button, primary_button
 from app.utils.logger import setup_logger
-from app.utils.profile_settings_store import EARTHQUAKE_METHOD_OPTIONS, RESERVE_BUILDERS_MAX, WALL_UPGRADE_THRESHOLD_M_MAX, ProfileSettings, load_profile_settings, save_profile_settings
+from app.utils.profile_settings_store import EARTHQUAKE_METHOD_OPTIONS, BB_WALL_UPGRADE_THRESHOLD_M_MAX, RESERVE_BUILDERS_MAX, WALL_UPGRADE_THRESHOLD_M_MAX, ProfileSettings, load_profile_settings, save_profile_settings
 from app.utils.window_settings_store import clear_window_selection, load_window_selection, save_window_selection
 logger = setup_logger('SettingsPage')
 
@@ -75,7 +76,7 @@ class SettingsPage(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 0, 4, 0)
         layout.setSpacing(SPACING['md'])
         layout.addWidget(self._build_earthquake_card())
         layout.addWidget(self._build_window_card())
@@ -90,39 +91,64 @@ class SettingsPage(QWidget):
         self._earthquake = QComboBox()
         self._earthquake.addItems(list(EARTHQUAKE_METHOD_OPTIONS))
         card.card_layout.addWidget(self._earthquake)
+        card.card_layout.addWidget(Separator())
         card.card_layout.addWidget(SectionTitle('Wall upgrade threshold'))
         wall_hint = QLabel('With "Upgrade walls" on, upgrade as soon as gold or elixir reaches this amount — before storages fill up and raids stop earning. 0 = only upgrade when storages are full.')
         wall_hint.setWordWrap(True)
-        wall_hint.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        wall_hint.setStyleSheet(f'''color: {TOKENS['text_muted']}; font-size: 12px;''')
         card.card_layout.addWidget(wall_hint)
         wall_row = QHBoxLayout()
         self._wall_threshold = QSpinBox()
         self._wall_threshold.setRange(0, WALL_UPGRADE_THRESHOLD_M_MAX)
         self._wall_threshold.setSuffix('M')
-        self._wall_threshold.setFixedWidth(88)
+        self._wall_threshold.setFixedWidth(96)
+        self._wall_threshold.setAlignment(_Qt.AlignmentFlag.AlignCenter)
         wall_row.addWidget(self._wall_threshold)
-        wall_unit = QLabel('gold or elixir')
+        wall_unit = QLabel('Home Village gold or elixir')
         wall_unit.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
         wall_row.addWidget(wall_unit)
         wall_row.addStretch()
         card.card_layout.addLayout(wall_row)
+        card.card_layout.addWidget(Separator())
+        card.card_layout.addWidget(SectionTitle('Builder Base wall upgrade threshold'))
+        bb_wall_hint = QLabel('Builder Base only, separate from the Home Village one. With Builder Base "Upgrade walls" on, upgrade as soon as Builder Base gold or elixir reaches this amount. 0 = as soon as the loot pays two walls of the cheapest level.')
+        bb_wall_hint.setWordWrap(True)
+        bb_wall_hint.setStyleSheet(f'''color: {TOKENS['text_muted']}; font-size: 12px;''')
+        card.card_layout.addWidget(bb_wall_hint)
+        bb_wall_row = QHBoxLayout()
+        self._bb_wall_threshold = QDoubleSpinBox()
+        self._bb_wall_threshold.setDecimals(1)
+        self._bb_wall_threshold.setRange(0.0, BB_WALL_UPGRADE_THRESHOLD_M_MAX)
+        self._bb_wall_threshold.setSingleStep(0.1)
+        self._bb_wall_threshold.setSuffix('M')
+        self._bb_wall_threshold.setFixedWidth(96)
+        self._bb_wall_threshold.setAlignment(_Qt.AlignmentFlag.AlignCenter)
+        bb_wall_row.addWidget(self._bb_wall_threshold)
+        bb_wall_unit = QLabel('Builder Base gold or elixir')
+        bb_wall_unit.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        bb_wall_row.addWidget(bb_wall_unit)
+        bb_wall_row.addStretch()
+        card.card_layout.addLayout(bb_wall_row)
+        card.card_layout.addWidget(Separator())
         card.card_layout.addWidget(SectionTitle('Upgrade order'))
         order_hint = QLabel('Priciest first soaks full storages into the biggest jobs (best when the bot farms loot faster than builders free up). Dark elixir upgrades (heroes) always get first claim either way. Also picks the wall level: cheapest first walks the whole Build list before choosing (a few seconds slower).')
         order_hint.setWordWrap(True)
-        order_hint.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        order_hint.setStyleSheet(f'''color: {TOKENS['text_muted']}; font-size: 12px;''')
         card.card_layout.addWidget(order_hint)
         self._upgrade_order = QComboBox()
         self._upgrade_order.addItems(['Priciest first', 'Cheapest first'])
         card.card_layout.addWidget(self._upgrade_order)
+        card.card_layout.addWidget(Separator())
         card.card_layout.addWidget(SectionTitle('Reserve builders'))
         reserve_hint = QLabel('With Auto upgrade on, keep this many builders free (the wall flow spends through them). Set 0 when your walls are maxed so every builder is used for upgrades.')
         reserve_hint.setWordWrap(True)
-        reserve_hint.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        reserve_hint.setStyleSheet(f'''color: {TOKENS['text_muted']}; font-size: 12px;''')
         card.card_layout.addWidget(reserve_hint)
         reserve_row = QHBoxLayout()
         self._reserve_builders = QSpinBox()
         self._reserve_builders.setRange(0, RESERVE_BUILDERS_MAX)
-        self._reserve_builders.setFixedWidth(88)
+        self._reserve_builders.setFixedWidth(96)
+        self._reserve_builders.setAlignment(_Qt.AlignmentFlag.AlignCenter)
         reserve_row.addWidget(self._reserve_builders)
         reserve_unit = QLabel('builders kept free')
         reserve_unit.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
@@ -143,6 +169,7 @@ class SettingsPage(QWidget):
         # repro: "Random Placement" picked, runs kept using Curve Placement.
         self._earthquake.currentIndexChanged.connect(self._auto_save)
         self._wall_threshold.valueChanged.connect(self._auto_save)
+        self._bb_wall_threshold.valueChanged.connect(self._auto_save)
         self._upgrade_order.currentIndexChanged.connect(self._auto_save)
         self._reserve_builders.valueChanged.connect(self._auto_save)
         return card
@@ -158,7 +185,7 @@ class SettingsPage(QWidget):
         card.card_layout.addWidget(SectionTitle('Game window'))
         hint = QLabel("If the bot can't find Clash of Clans, pick the Google Play Games window below and press Test. Windows with a game surface are listed first.")
         hint.setWordWrap(True)
-        hint.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        hint.setStyleSheet(f'''color: {TOKENS['text_muted']}; font-size: 12px;''')
         card.card_layout.addWidget(hint)
         self._window_list = QListWidget()
         self._window_list.setObjectName('WindowList')
@@ -187,9 +214,11 @@ class SettingsPage(QWidget):
         self._btn_auto.clicked.connect(self._on_auto_detect)
         row.addWidget(self._btn_auto)
         card.card_layout.addLayout(row)
+        card.card_layout.addWidget(Separator())
+        card.card_layout.addWidget(SectionTitle('Display'))
         disp_hint = QLabel("Ultrawide / 21:9 monitor? Google Play Games locks the game to your display's aspect at launch, so it renders 21:9 (unsupported). Fix: click below to switch to 16:9, FULLY close and reopen Clash, then restore your display — the running game stays 16:9.")
         disp_hint.setWordWrap(True)
-        disp_hint.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        disp_hint.setStyleSheet(f'''color: {TOKENS['text_muted']}; font-size: 12px;''')
         card.card_layout.addWidget(disp_hint)
         disp_row = QHBoxLayout()
         self._btn_disp_169 = neutral_button('Switch display to 16:9', parent = card)
@@ -217,6 +246,7 @@ class SettingsPage(QWidget):
             if idx >= 0:
                 self._earthquake.setCurrentIndex(idx)
             self._wall_threshold.setValue(settings.wall_upgrade_threshold_m)
+            self._bb_wall_threshold.setValue(settings.bb_wall_upgrade_threshold_m)
             self._reserve_builders.setValue(settings.reserve_builders)
             self._upgrade_order.setCurrentIndex(1 if settings.upgrade_order == 'cheapest' else 0)
         finally:
@@ -224,7 +254,7 @@ class SettingsPage(QWidget):
 
 
     def _on_save(self):
-        save_profile_settings(ProfileSettings(earthquake_method = self._earthquake.currentText(), wall_upgrade_threshold_m = self._wall_threshold.value(), reserve_builders = self._reserve_builders.value(), upgrade_order = 'cheapest' if self._upgrade_order.currentIndex() == 1 else 'priciest'))
+        save_profile_settings(ProfileSettings(earthquake_method = self._earthquake.currentText(), wall_upgrade_threshold_m = self._wall_threshold.value(), bb_wall_upgrade_threshold_m = self._bb_wall_threshold.value(), reserve_builders = self._reserve_builders.value(), upgrade_order = 'cheapest' if self._upgrade_order.currentIndex() == 1 else 'priciest'))
         self._flash_status_bar('Saved')
 
     

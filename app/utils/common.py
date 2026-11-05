@@ -14,23 +14,34 @@ def get_resource_path(relative_path):
 
 
 
-APP_NAME = 'BasePilot'
-_LEGACY_DATA_DIR_NAME = 'ClashAutoLoot'  # pre-rebrand data dir; migrated on first use
+APP_NAME = 'AresPilot'
+LOG_FILENAME = 'arespilot.log'
+# Earlier names of the data dir, newest first: BasePilot (upstream name of this fork) and
+# ClashAutoLoot (upstream's pre-rebrand name). Settings are migrated from the first found.
+_LEGACY_DATA_DIR_NAMES = ('BasePilot', 'ClashAutoLoot')
 _migration_checked = False
 
 
-def _legacy_data_dir():
+def _data_root():
     if sys.platform == 'win32':
         local = os.environ.get('LOCALAPPDATA')
         if local:
-            return Path(local) / _LEGACY_DATA_DIR_NAME
-    return Path.home() / '.local' / 'share' / _LEGACY_DATA_DIR_NAME
+            return Path(local)
+    return Path.home() / '.local' / 'share'
+
+
+def _legacy_data_dir():
+    for name in _LEGACY_DATA_DIR_NAMES:
+        folder = _data_root() / name
+        if folder.is_dir():
+            return folder
+    return _data_root() / _LEGACY_DATA_DIR_NAMES[0]
 
 
 def _maybe_migrate_legacy_data(new_dir):
-    '''One-time settings migration from the pre-rebrand data dir: copy the small
-    user-state files (settings, player list, window pin, display restore) — never
-    logs or debug frames. Idempotent: skipped once the new dir holds settings.'''
+    '''One-time settings migration from the previous name's data dir: copy the small
+    user-state files (settings, player list, window pin, display restore) — never logs
+    or debug frames; the old dir is left untouched. Skipped once the new dir holds settings.'''
     global _migration_checked
     if _migration_checked:
         return
@@ -53,27 +64,20 @@ def _maybe_migrate_legacy_data(new_dir):
 
 
 def get_user_app_data_dir():
-    '''Per-user writable data (Windows: LOCALAPPDATA\\BasePilot).'''
-    if sys.platform == 'win32':
-        local = os.environ.get('LOCALAPPDATA')
-        if local:
-            path = Path(local) / APP_NAME
-        else:
-            path = Path.home() / '.local' / 'share' / APP_NAME
-    else:
-        path = Path.home() / '.local' / 'share' / APP_NAME
+    '''Per-user writable data (Windows: LOCALAPPDATA\\AresPilot).'''
+    path = _data_root() / APP_NAME
     _maybe_migrate_legacy_data(path)
     return path
 
 
 def get_log_path():
-    '''Path to the rotating ``basepilot.log`` in the per-user data dir
-    (``BASEPILOT_LOG_DIR`` overrides the folder — the tests use it to keep their
+    '''Path to the rotating ``arespilot.log`` in the per-user data dir
+    (``ARESPILOT_LOG_DIR`` overrides the folder — the tests use it to keep their
     log lines out of the real run log).'''
-    override = os.environ.get('BASEPILOT_LOG_DIR')
+    override = os.environ.get('ARESPILOT_LOG_DIR')
     folder = Path(override) if override else get_user_app_data_dir()
     ensure_dir(folder)
-    return folder / 'basepilot.log'
+    return folder / LOG_FILENAME
 
 
 # Back-compat alias (old name used across the decompiled tree).

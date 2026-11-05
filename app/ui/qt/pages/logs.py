@@ -1,11 +1,11 @@
-'''Logs page — tail basepilot.log in the UI.'''
+'''Logs page — tail arespilot.log in the UI.'''
 from __future__ import annotations
 import os
 import subprocess
 import sys
 from typing import Optional
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QHBoxLayout, QPlainTextEdit, QVBoxLayout, QWidget
 from app.ui.qt.theme import SPACING
 from app.ui.qt.widgets import PageTitle, neutral_button
@@ -35,8 +35,7 @@ class LogsPage(QWidget):
         self._log_view = QPlainTextEdit()
         self._log_view.setReadOnly(True)
         self._log_view.setMaximumBlockCount(5000)
-        mono = QFont('Courier New', 9)
-        self._log_view.setFont(mono)
+        self._log_view.setObjectName('LogView')  # monospace + panel look come from the theme
         layout.addWidget(self._log_view, stretch = 1)
 
     

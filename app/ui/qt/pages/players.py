@@ -2,18 +2,20 @@
 from __future__ import annotations
 from typing import List, Optional
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLineEdit, QScrollArea, QVBoxLayout, QWidget
 from app.ui.qt.theme import SPACING, TOKENS
-from app.ui.qt.widgets import PageTitle, chip_button, danger_button, neutral_button, primary_button
+from app.ui.qt.widgets import Card, PageTitle, chip_button, danger_button, neutral_button, primary_button
 from app.utils.player_list_store import PlayerEntry, load_players, save_players
 
-class _PlayerRow(QWidget):
+class _PlayerRow(QFrame):
     
     def __init__(self, entry, on_change, on_move_up, on_move_down, on_remove, parent = None):
         super().__init__(parent)
+        self.setObjectName('Card')
         self._on_change = on_change
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(6)
         self._name = QLineEdit(entry.name)
         self._name.setPlaceholderText('Username (match in-game)')
         self._name.setMinimumWidth(240)
@@ -67,14 +69,14 @@ class PlayersPage(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(SPACING['lg'], SPACING['lg'], SPACING['lg'], SPACING['lg'])
         outer.setSpacing(SPACING['md'])
-        outer.addWidget(PageTitle('Player list'))
+        outer.addWidget(PageTitle('Players'))
         hint = QWidget()
         hint_layout = QVBoxLayout(hint)
         hint_layout.setContentsMargins(0, 0, 0, 0)
         from PySide6.QtWidgets import QLabel
-        hint_label = QLabel('Order is rotation order (↑↓). Run (green) = farm this account; Skip (red) = ignore.')
+        hint_label = QLabel('Multi-run rotates through these accounts from top to bottom (↑↓ to reorder). Run (blue) = farm this account; Skip (red) = ignore.')
         hint_label.setWordWrap(True)
-        hint_label.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        hint_label.setStyleSheet(f'''color: {TOKENS['text_muted']}; font-size: 12px;''')
         hint_layout.addWidget(hint_label)
         outer.addWidget(hint)
         scroll = QScrollArea()
@@ -82,11 +84,12 @@ class PlayersPage(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._list_host = QWidget()
         self._list_layout = QVBoxLayout(self._list_host)
+        self._list_layout.setContentsMargins(0, 0, 4, 0)
         self._list_layout.setSpacing(SPACING['sm'])
         self._list_layout.addStretch()
         scroll.setWidget(self._list_host)
         outer.addWidget(scroll, stretch = 1)
-        add_btn = neutral_button('Add player')
+        add_btn = primary_button('Add player')
         add_btn.clicked.connect((lambda : self._add_row(PlayerEntry(name = '', enabled = True))))
         outer.addWidget(add_btn)
 
@@ -174,3 +177,36 @@ class PlayersPage(QWidget):
         save_players(players)
 
 
+
+
+class PlayersWipPage(QWidget):
+    """Placeholder shown on the Players tab while multi-run is being reworked (the
+    player list editor above stays in the code for the rework)."""
+
+    def __init__(self, parent = None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QLabel
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(SPACING['lg'], SPACING['lg'], SPACING['lg'], SPACING['lg'])
+        outer.setSpacing(SPACING['md'])
+        outer.addWidget(PageTitle('Players'))
+        outer.addStretch(1)
+        card = Card()
+        card.setMaximumWidth(460)
+        card.card_layout.setContentsMargins(28, 28, 28, 28)
+        card.card_layout.setSpacing(10)
+        title = QLabel('Work in progress')
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet('font-size: 22px; font-weight: 700;')
+        card.card_layout.addWidget(title)
+        body = QLabel('The player list and multi-run are being reworked. They will be back in a future update.')
+        body.setWordWrap(True)
+        body.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        body.setStyleSheet(f"color: {TOKENS['text_muted']};")
+        card.card_layout.addWidget(body)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        row.addWidget(card)
+        row.addStretch(1)
+        outer.addLayout(row)
+        outer.addStretch(2)

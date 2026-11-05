@@ -4,6 +4,7 @@ import json
 import time
 from datetime import datetime
 from typing import Callable, List, Optional
+from app.utils.common import APP_NAME
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtWidgets import QButtonGroup, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QScrollArea, QSpinBox, QVBoxLayout, QWidget
 from app.config import check_game_window_aspect_for_start
@@ -11,7 +12,7 @@ from app.ui.qt._constants import ATTACK_STRATEGIES, BUILDER_BASE_ATTACK_STRATEGI
 from app.ui.qt.bot_controller import BotController
 from app.ui.qt.dialogs import RankedAttackConfirmDialog, show_bb_prioritise_help, show_error, show_under_development
 from app.ui.qt.theme import SPACING, TOKENS
-from app.ui.qt.widgets import Card, HelpButton, SectionTitle, StepperButton, ToggleSwitch, chip_button, danger_button, neutral_button, primary_button, segment_button
+from app.ui.qt.widgets import Card, HelpButton, PageTitle, SectionTitle, StepperButton, ToggleSwitch, chip_button, danger_button, link_button, primary_button, segment_button
 from app.utils.player_list_store import PlayerEntry, load_players
 
 class RunPage(QWidget):
@@ -33,16 +34,24 @@ class RunPage(QWidget):
         super().__init__(parent)
         self._controller = controller
         self._navigate_to = navigate_to
-        self._settings = QSettings('BasePilot', 'UI')
+        self._settings = QSettings(APP_NAME, 'UI')
         outer = QVBoxLayout(self)
         outer.setContentsMargins(SPACING['lg'], SPACING['lg'], SPACING['lg'], SPACING['lg'])
         outer.setSpacing(SPACING['md'])
+        # Title row: Start / Stop stay visible at the top right, outside the scroll.
+        header = QHBoxLayout()
+        header.setSpacing(SPACING['sm'])
+        header.addWidget(PageTitle('Run'))
+        header.addStretch()
+        header.addWidget(self._build_controls())
+        outer.addLayout(header)
         outer.addWidget(self._build_village_selector())
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         content = QWidget()
         layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 4, 0)
         layout.setSpacing(SPACING['md'])
         self._attack_card = self._build_attack_card()
         layout.addWidget(self._attack_card)
@@ -58,10 +67,11 @@ class RunPage(QWidget):
         status_row.setSpacing(SPACING['md'])
         self._status_card = self._build_status_card()
         self._last_session_card = self._build_last_session_card()
+        self._bb_last_session_card = self._build_bb_last_session_card()
         status_row.addWidget(self._status_card, 1)
         status_row.addWidget(self._last_session_card, 1)
+        status_row.addWidget(self._bb_last_session_card, 1)
         layout.addLayout(status_row)
-        layout.addWidget(self._build_controls_card())
         layout.addStretch()
         scroll.setWidget(content)
         outer.addWidget(scroll)
@@ -81,6 +91,7 @@ class RunPage(QWidget):
         wrapper = QWidget()
         row = QHBoxLayout(wrapper)
         row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
         self._village_group = QButtonGroup(self)
         self._village_group.setExclusive(True)
         for i, label in enumerate(self._VILLAGE_LABELS):
@@ -109,10 +120,10 @@ class RunPage(QWidget):
         self._modes_card.setVisible(not builder_base)
         self._bb_attack_card.setVisible(builder_base)
         self._bb_modes_card.setVisible(builder_base)
-        # Until-maxed (and the auto-upgrader behind it) is Home Village only.
-        self._until_maxed.setVisible(not builder_base)
-        if builder_base and self._until_maxed.isChecked():
-            self._until_maxed.setChecked(False)
+        self._last_session_card.setVisible(not builder_base)
+        self._bb_last_session_card.setVisible(builder_base)
+        # Same "Run until maxed" switch for both villages; the hint says what it does here.
+        self._until_hint.setText(self._UNTIL_HINT_BB if builder_base else self._UNTIL_HINT_HOME)
 
     
     def _build_attack_card(self):
@@ -152,6 +163,9 @@ class RunPage(QWidget):
         return card
 
     
+    _UNTIL_HINT_HOME = 'Farms, upgrades, and idles in a loop until you press Stop. When storages are full and nothing can be started, the bot waits and rechecks every 5 minutes instead of attacking for nothing.'
+    _UNTIL_HINT_BB = 'Builder Base: attacks (and upgrades walls, if on) in a loop until you press Stop — no time limit.'
+
     def _build_schedule_card(self):
         card = Card()
         card.card_layout.addWidget(SectionTitle('Schedule'))
@@ -161,10 +175,10 @@ class RunPage(QWidget):
         self._until_maxed = ToggleSwitch('Run until maxed (no time limit)', parent = card)
         self._until_maxed.toggled.connect(self._on_until_maxed_toggle)
         card.card_layout.addWidget(self._until_maxed)
-        until_hint = QLabel('Farms, upgrades, and idles in a loop until you press Stop. When storages are full and nothing can be started, the bot waits and rechecks every 5 minutes instead of attacking for nothing.')
-        until_hint.setWordWrap(True)
-        until_hint.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
-        card.card_layout.addWidget(until_hint)
+        self._until_hint = QLabel(self._UNTIL_HINT_HOME)
+        self._until_hint.setWordWrap(True)
+        self._until_hint.setStyleSheet(f'''color: {TOKENS['text_muted']}; font-size: 12px;''')
+        card.card_layout.addWidget(self._until_hint)
         dur_row = QHBoxLayout()
         self._duration_label = SectionTitle('Duration')
         dur_row.addWidget(self._duration_label)
@@ -231,7 +245,7 @@ class RunPage(QWidget):
         card.card_layout.addLayout(upg_row)
         upg_hint = QLabel('Maxer starts the cheapest affordable upgrade with your loot (never the Town Hall); Rusher grabs the Town Hall the moment it is affordable. Dry run only logs what it would start. Works at any Town Hall level. Reserve builders for walls in Settings.')
         upg_hint.setWordWrap(True)
-        upg_hint.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        upg_hint.setStyleSheet(f'''color: {TOKENS['text_muted']}; font-size: 12px;''')
         card.card_layout.addWidget(upg_hint)
         self._ranked = ToggleSwitch('Ranked attack fill', parent = card, danger = True)
         card.card_layout.addWidget(self._ranked)
@@ -241,7 +255,7 @@ class RunPage(QWidget):
         self._multi_run = ToggleSwitch('Multi-run', parent = card)
         mr_row.addWidget(self._multi_run)
         mr_row.addStretch()
-        edit_players = neutral_button('Edit player list', parent = card)
+        edit_players = link_button('Edit player list ›', parent = card)
         edit_players.clicked.connect((lambda : self._navigate_to('players')))
         mr_row.addWidget(edit_players)
         card.card_layout.addLayout(mr_row)
@@ -266,15 +280,15 @@ class RunPage(QWidget):
             prior_row.addWidget(btn)
         prior_row.addStretch()
         card.card_layout.addLayout(prior_row)
-        self._bb_upgrade_walls = ToggleSwitch('Upgrade walls', parent = card, under_development = True)
+        self._bb_upgrade_walls = ToggleSwitch('Upgrade walls', parent = card)
         card.card_layout.addWidget(self._bb_upgrade_walls)
         mr_row = QHBoxLayout()
         self._bb_multi_run = ToggleSwitch('Multi-run', parent = card, under_development = True)
         mr_row.addWidget(self._bb_multi_run)
         mr_row.addStretch()
-        edit_players = neutral_button('Edit player list', parent = card)
-        edit_players.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
-        edit_players.clicked.connect((lambda : show_under_development(self.window())))
+        edit_players = link_button('Edit player list ›', parent = card)
+        edit_players.setEnabled(False)
+        edit_players.setToolTip('Builder Base multi-run is under development')
         mr_row.addWidget(edit_players)
         card.card_layout.addLayout(mr_row)
         return card
@@ -285,9 +299,6 @@ class RunPage(QWidget):
         """A status-styled card with a grid of TITLE / value pairs; returns
         (card, add) where ``add(row, col, label)`` places one pair and returns its value label."""
         card = Card()
-        card.setProperty('variant', 'status')
-        card.style().unpolish(card)
-        card.style().polish(card)
         card.card_layout.addWidget(SectionTitle(title))
         grid = QGridLayout()
         grid.setHorizontalSpacing(SPACING['lg'])
@@ -343,6 +354,18 @@ class RunPage(QWidget):
         card.card_layout.addWidget(self._last_note)
         return card
 
+    def _build_bb_last_session_card(self):
+        '''Builder Base runs: shown in place of "Last session" while Builder Base is selected.'''
+        (card, stat) = self._stat_card('Last session — Builder Base')
+        self._bb_last_attacks = stat(0, 0, 'Attacks')
+        self._bb_last_walls = stat(0, 1, 'Walls upgraded')
+        self._bb_last_duration = stat(1, 0, 'Duration')
+        self._bb_last_note = QLabel('Filled in when a Builder Base run ends.')
+        self._bb_last_note.setWordWrap(True)
+        self._bb_last_note.setStyleSheet(f"color: {TOKENS['text_muted']};")
+        card.card_layout.addWidget(self._bb_last_note)
+        return card
+
     @staticmethod
     def _fmt_duration(seconds):
         seconds = max(0, int(seconds))
@@ -361,13 +384,21 @@ class RunPage(QWidget):
         ended = stats.get('ended')
         self._last_note.setText(f'Ended {ended}' if ended else '')
 
+    def _show_bb_last_session(self, stats):
+        self._bb_last_attacks.setText(str(int(stats.get('attacks', 0))))
+        self._bb_last_walls.setText(str(int(stats.get('walls', 0))))
+        self._bb_last_duration.setText(self._fmt_duration(stats.get('duration_s', 0)))
+        ended = stats.get('ended')
+        self._bb_last_note.setText(f'Ended {ended}' if ended else '')
+
     def _on_run_summary(self, stats):
         """End of a run: refresh the Last session card and keep it across app restarts."""
         stats = dict(stats)
         stats['ended'] = datetime.now().strftime('%d/%m %H:%M')
-        self._show_last_session(stats)
+        builder = stats.get('village') == 'builder'
+        (self._show_bb_last_session if builder else self._show_last_session)(stats)
         try:
-            self._settings.setValue('run/lastSession', json.dumps(stats))
+            self._settings.setValue('run/lastSessionBB' if builder else 'run/lastSession', json.dumps(stats))
         except Exception:
             pass
 
@@ -376,6 +407,12 @@ class RunPage(QWidget):
             raw = self._settings.value('run/lastSession', '', type = str)
             if raw:
                 self._show_last_session(json.loads(raw))
+        except Exception:
+            pass
+        try:
+            raw = self._settings.value('run/lastSessionBB', '', type = str)
+            if raw:
+                self._show_bb_last_session(json.loads(raw))
         except Exception:
             pass
 
@@ -389,8 +426,8 @@ class RunPage(QWidget):
         return str(value)
 
     _STATE_COLORS = {
-        'farming': '#4ADE80',  # engaged green
-        'idling': '#F59E0B',   # holding amber
+        'farming': TOKENS['success'],  # engaged green
+        'idling': TOKENS['warning'],   # holding amber
     }
 
     def _on_state_changed(self, payload):
@@ -424,20 +461,23 @@ class RunPage(QWidget):
         return reply == QMessageBox.StandardButton.Yes
 
     
-    def _build_controls_card(self):
-        card = Card()
-        btn_row = QHBoxLayout()
-        self._btn_start = primary_button('Start', parent = card)
-        self._btn_start.setMinimumHeight(42)
+    def _build_controls(self):
+        wrapper = QWidget()
+        btn_row = QHBoxLayout(wrapper)
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.setSpacing(SPACING['sm'])
+        self._btn_start = primary_button('Start', parent = wrapper)
+        self._btn_start.setObjectName('RunAction')
+        self._btn_start.setMinimumWidth(110)
         self._btn_start.clicked.connect(self.start_bot)
         btn_row.addWidget(self._btn_start)
-        self._btn_stop = danger_button('Stop', parent = card)
-        self._btn_stop.setMinimumHeight(42)
+        self._btn_stop = danger_button('Stop', parent = wrapper)
+        self._btn_stop.setObjectName('RunAction')
+        self._btn_stop.setMinimumWidth(110)
         self._btn_stop.setEnabled(False)
         self._btn_stop.clicked.connect(self._controller.stop)
         btn_row.addWidget(self._btn_stop)
-        card.card_layout.addLayout(btn_row)
-        return card
+        return wrapper
 
     
     def _clear_minutes_selection(self):
@@ -477,7 +517,7 @@ class RunPage(QWidget):
         if enabled:
             self._minutes_unit.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
             return None
-        self._minutes_unit.setStyleSheet('color: #4a5568;')
+        self._minutes_unit.setStyleSheet(f'''color: {TOKENS['text_faint']};''')
 
     def _on_star_bonus_toggle(self, checked):
         if checked and getattr(self, '_until_maxed', None) is not None and self._until_maxed.isChecked():
@@ -523,18 +563,52 @@ class RunPage(QWidget):
                     btn.setChecked(True)
                 return None
 
+    @staticmethod
+    def _check_by_text(group, text):
+        '''Check the button of ``group`` labelled ``text``; False when there is none.'''
+        for btn in group.buttons():
+            if btn.text() == text:
+                btn.setChecked(True)
+                return True
+        return False
+
+    @staticmethod
+    def _checked_text(group):
+        btn = group.checkedButton()
+        return '' if btn is None else btn.text()
+
     def _restore_choices(self):
-        '''Bring back the last run's choices (mode, walls, duration) across app starts.'''
+        '''Bring back the last run's choices across app starts: village, army, Builder Base
+        mode, toggles and duration (saved when Start is pressed).'''
+        self._check_by_text(self._village_group, str(self._settings.value('run/village', 'Home Village')))
+        self._apply_village_ui()
+        self._check_by_text(self._strategy_group, str(self._settings.value('run/strategy', 'Valkyries')))
+        self._check_by_text(self._bb_strategy_group, str(self._settings.value('run/bbStrategy', 'Baby Dragon')))
+        self._check_by_text(self._bb_prioritise_group, str(self._settings.value('run/bbPrioritise', 'Both')))
+        self._ranked.setChecked(self._settings.value('run/ranked', False, type = bool))
+        self._multi_run.setChecked(self._settings.value('run/multiRun', False, type = bool))
         self._set_auto_upgrade_mode(str(self._settings.value('run/autoUpgrade', 'off')))
         self._upgrade_walls.setChecked(self._settings.value('run/upgradeWalls', False, type = bool))
+        self._bb_upgrade_walls.setChecked(self._settings.value('run/bbUpgradeWalls', False, type = bool))
         self._until_maxed.setChecked(self._settings.value('run/untilMaxed', False, type = bool))
         minutes = self._settings.value('run/minutes', 15, type = int)
         if 1 <= minutes <= 999:
             self._minutes_spin.setValue(minutes)
+        # After "until maxed": the two switches turn each other off.
+        if self._settings.value('run/starBonus', False, type = bool):
+            self._star_bonus.setChecked(True)
 
     def _save_choices(self):
+        self._settings.setValue('run/village', self._checked_text(self._village_group))
+        self._settings.setValue('run/strategy', self._checked_text(self._strategy_group))
+        self._settings.setValue('run/bbStrategy', self._checked_text(self._bb_strategy_group))
+        self._settings.setValue('run/bbPrioritise', self._checked_text(self._bb_prioritise_group))
+        self._settings.setValue('run/starBonus', self._star_bonus.isChecked())
+        self._settings.setValue('run/ranked', self._ranked.isChecked())
+        self._settings.setValue('run/multiRun', self._multi_run.isChecked())
         self._settings.setValue('run/autoUpgrade', self._get_auto_upgrade_mode())
         self._settings.setValue('run/upgradeWalls', self._upgrade_walls.isChecked())
+        self._settings.setValue('run/bbUpgradeWalls', self._bb_upgrade_walls.isChecked())
         self._settings.setValue('run/untilMaxed', self._until_maxed.isChecked())
         self._settings.setValue('run/minutes', self._minutes_spin.value())
 
@@ -564,8 +638,8 @@ class RunPage(QWidget):
             show_error(self.window(), 'Multi-run', 'Enable at least one player with Run and a non-empty name.\nOpen Player list… to edit.')
             return None
         star_bonus = self._star_bonus.isChecked()
-        # "Run until maxed" = unlimited duration; single Home Village runs only.
-        until_maxed = (not builder_base and not star_bonus and multi_arg is None
+        # "Run until maxed" = unlimited duration; single runs (either village) only.
+        until_maxed = (not star_bonus and multi_arg is None
                        and self._until_maxed.isChecked())
         if star_bonus:
             mins = 5
@@ -584,7 +658,7 @@ class RunPage(QWidget):
         if builder_base and self._get_bb_prioritise() == 'elixir' and not self._confirm_bb_elixir_prioritise():  # [recovered: decompiler inverted both conditions]
             return None
         self._save_choices()
-        self._controller.start(method = method, minutes = mins, star_bonus = star_bonus, ranked_fill = ranked_fill, upgrade_walls = False if builder_base else self._upgrade_walls.isChecked(), multi_run_players = multi_arg, builder_base = builder_base, loot_prioritise = self._get_bb_prioritise() if builder_base else 'both', auto_upgrade = 'off' if builder_base else self._get_auto_upgrade_mode())
+        self._controller.start(method = method, minutes = mins, star_bonus = star_bonus, ranked_fill = ranked_fill, upgrade_walls = self._bb_upgrade_walls.isChecked() if builder_base else self._upgrade_walls.isChecked(), multi_run_players = multi_arg, builder_base = builder_base, loot_prioritise = self._get_bb_prioritise() if builder_base else 'both', auto_upgrade = 'off' if builder_base else self._get_auto_upgrade_mode())
 
     
     def is_star_bonus_enabled(self):
@@ -597,17 +671,26 @@ class RunPage(QWidget):
             return None
 
 
-    def apply_autostart(self, minutes, upgrade_walls, auto_upgrade = 'off'):
-        '''CLI ``--autostart``: Home Village run with the given duration (``0`` =
-        run until maxed), wall toggle, and auto-upgrade mode (off|dry|maxer|rusher).'''
+    def apply_autostart(self, minutes, upgrade_walls, auto_upgrade = 'off', builder_base = False):
+        '''CLI ``--autostart``: run with the given duration (``0`` = run until maxed),
+        wall toggle, and auto-upgrade mode (off|dry|maxer|rusher); ``builder_base``
+        selects the Builder Base (its own wall toggle; auto-upgrade is Home only).'''
         if self._controller.is_running():
             return None
+        target = 'Builder Base' if builder_base else 'Home Village'
+        for btn in self._village_group.buttons():
+            if btn.text() == target:
+                btn.setChecked(True)
+        self._apply_village_ui()
         self._star_bonus.setChecked(False)
         self._until_maxed.setChecked(minutes <= 0)
         if minutes > 0:
             self._minutes_spin.setValue(minutes)
-        self._upgrade_walls.setChecked(bool(upgrade_walls))
-        self._set_auto_upgrade_mode(auto_upgrade)
+        if builder_base:
+            self._bb_upgrade_walls.setChecked(bool(upgrade_walls))
+        else:
+            self._upgrade_walls.setChecked(bool(upgrade_walls))
+            self._set_auto_upgrade_mode(auto_upgrade)
         self.start_bot()
 
     

@@ -2,7 +2,8 @@
 from __future__ import annotations
 import platform
 import sys
-from PySide6.QtCore import QSettings, QTimer, Qt
+from app.utils.common import APP_NAME
+from PySide6.QtCore import QSettings, QSize, QTimer, Qt
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QStackedWidget, QStatusBar, QVBoxLayout, QWidget
 from app import __version__
@@ -10,11 +11,12 @@ from app.ui.qt.branding import apply_app_icon, logo_pixmap
 from app.ui.qt.bot_controller import BotController
 from app.ui.qt.dialogs import show_error
 from app.ui.qt.pages.logs import LogsPage
-from app.ui.qt.pages.players import PlayersPage
+from app.ui.qt.pages.players import PlayersWipPage
 from app.ui.qt.pages.run import RunPage
 from app.ui.qt.pages.settings import SettingsPage
 from app.ui.qt.taskbar_thumb_qt import QtTaskbarThumb
 from app.ui.qt.theme import SIDEBAR_WIDTH, TOKENS, WINDOW_DEFAULT, WINDOW_MIN
+from app.ui.qt.widgets import sidebar_icon
 PAGE_KEYS = [
     'run',
     'settings',
@@ -30,10 +32,10 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('BasePilot')
+        self.setWindowTitle(APP_NAME)
         self.resize(*WINDOW_DEFAULT)
         self.setMinimumSize(*WINDOW_MIN)
-        self._settings = QSettings('BasePilot', 'UI')
+        self._settings = QSettings(APP_NAME, 'UI')
         self._migrate_legacy_ui_settings()
         self._controller = BotController(bot_version = __version__)
         self._taskbar = None
@@ -45,29 +47,42 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         sidebar_panel = QWidget()
+        sidebar_panel.setObjectName('SidebarPanel')
+        sidebar_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         sidebar_panel.setFixedWidth(SIDEBAR_WIDTH)
         sidebar_col = QVBoxLayout(sidebar_panel)
-        sidebar_col.setContentsMargins(12, 16, 12, 8)
-        sidebar_col.setSpacing(8)
+        sidebar_col.setContentsMargins(12, 18, 12, 12)
+        sidebar_col.setSpacing(18)
+        brand_row = QHBoxLayout()
+        brand_row.setContentsMargins(6, 0, 0, 0)
+        brand_row.setSpacing(10)
         logo = QLabel()
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo.setPixmap(logo_pixmap(48))
-        sidebar_col.addWidget(logo)
-        brand = QLabel(f'''<span style="color:{TOKENS['primary']}">Base</span><span style="color:{TOKENS['text']}">Pilot</span>''')
+        logo.setPixmap(logo_pixmap(34))
+        brand_row.addWidget(logo)
+        brand_col = QVBoxLayout()
+        brand_col.setSpacing(0)
+        brand = QLabel(APP_NAME)
         brand.setObjectName('Brand')
-        brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sidebar_col.addWidget(brand)
+        brand_col.addWidget(brand)
+        brand_sub = QLabel('October 2026 UI')
+        brand_sub.setObjectName('BrandSub')
+        brand_col.addWidget(brand_sub)
+        brand_row.addLayout(brand_col)
+        brand_row.addStretch()
+        sidebar_col.addLayout(brand_row)
         self._sidebar = QListWidget()
         self._sidebar.setObjectName('Sidebar')
-        for label in PAGE_LABELS:
-            QListWidgetItem(label, self._sidebar)
+        self._sidebar.setIconSize(QSize(18, 18))
+        self._sidebar.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        for (key, label) in zip(PAGE_KEYS, PAGE_LABELS):
+            QListWidgetItem(sidebar_icon(key), label, self._sidebar)
         self._sidebar.setCurrentRow(0)
         sidebar_col.addWidget(self._sidebar, stretch = 1)
         root.addWidget(sidebar_panel)
         self._stack = QStackedWidget()
         self._run_page = RunPage(self._controller, self.navigate_to)
         self._settings_page = SettingsPage()
-        self._players_page = PlayersPage()
+        self._players_page = PlayersWipPage()  # multi-run is being reworked
         self._logs_page = LogsPage()
         for page in (self._run_page, self._settings_page, self._players_page, self._logs_page):
             self._stack.addWidget(page)
@@ -79,22 +94,27 @@ class MainWindow(QMainWindow):
 
 
     def _migrate_legacy_ui_settings(self):
-        '''One-time QSettings migration from the pre-rebrand org name.'''
-        if self._settings.contains('geometry'):
+        '''One-time QSettings migration from the previous names (BasePilot, then the
+        pre-rebrand ClashAutoLoot): window geometry and the Run page choices.'''
+        if self._settings.allKeys():
             return None
-        legacy = QSettings('ClashAutoLoot', 'UI')
-        for key in ('geometry', 'windowState', 'run/autoUpgrade', 'run/upgradeWalls', 'run/untilMaxed', 'run/minutes'):
-            if legacy.contains(key):
-                self._settings.setValue(key, legacy.value(key))
+        for org in ('BasePilot', 'ClashAutoLoot'):
+            legacy = QSettings(org, 'UI')
+            if legacy.allKeys():
+                for key in legacy.allKeys():
+                    self._settings.setValue(key, legacy.value(key))
+                return None
 
     def _build_status_bar(self):
         bar = QStatusBar()
         self.setStatusBar(bar)
         self._status_label = QLabel('Ready')
         self._status_label.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        self._status_label.setContentsMargins(10, 2, 0, 2)
         bar.addWidget(self._status_label, stretch = 1)
         version_lbl = QLabel(f'''v{__version__}''')
         version_lbl.setStyleSheet(f'''color: {TOKENS['text_muted']};''')
+        version_lbl.setContentsMargins(0, 2, 10, 2)
         bar.addPermanentWidget(version_lbl)
 
 
@@ -113,9 +133,9 @@ class MainWindow(QMainWindow):
             return None
 
 
-    def autostart_run(self, minutes, upgrade_walls, auto_upgrade = 'off'):
+    def autostart_run(self, minutes, upgrade_walls, auto_upgrade = 'off', builder_base = False):
         '''CLI ``--autostart``: configure the Run page and press Start.'''
-        self._run_page.apply_autostart(minutes, upgrade_walls, auto_upgrade)
+        self._run_page.apply_autostart(minutes, upgrade_walls, auto_upgrade, builder_base)
 
 
     def _restore_geometry(self):

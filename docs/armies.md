@@ -1,6 +1,6 @@
 # Deploy mechanics
 
-What BasePilot actually does during a raid, for anyone tuning strategies or reading the code.
+What AresPilot actually does during a raid, for anyone tuning strategies or reading the code.
 
 For the recommended army and the setup that makes it work, see
 [Army setup](../README.md#army-setup) in the README.
@@ -26,7 +26,7 @@ filling the slot — the drag spreads whatever you're carrying along the edges.
 
 ## Earthquake placement
 
-BasePilot clicks **11 earthquake points** per raid, in one of two patterns
+AresPilot clicks **11 earthquake points** per raid, in one of two patterns
 (*Settings → Earthquake*):
 
 - **Curve placement** (default) — samples an arc through the left/top/right anchor points with
@@ -44,5 +44,29 @@ A different routine: **12 Electro Dragons** placed individually around the diamo
 
 ## Builder Base
 
-Baby Dragon is the only supported strategy. Night Witches is listed in the UI but is still under
-development.
+Baby Dragon is the only supported strategy (Night Witches is listed in the UI but still under
+development). Per battle:
+
+1. **Full zoom-out**, fast: the game shows the red "no deploy" border only for a few seconds.
+2. **Read the border.** Red-dominant pixels → straight segments along the two isometric grid
+   directions → convex hull. The Overall Damage panel is masked out (its stars are red too), and
+   a hull smaller than a real border (fire, wooden walls) is rejected.
+3. **Six zones** around the village (left, upper-left, upper-right, right, lower-right,
+   lower-left), each a random **2–8 tiles** outside the border. A zone that would land off the
+   playable floor, on the HUD, the troop bar or the buttons first comes closer (never under 2
+   tiles), then slides along the border; it is skipped only when no spot is free.
+4. **Drop** one dragon per zone (more dragons than zones: round-robin), each card selected on the
+   dragon's head — never on the troop-switch button — then its zone, all within ~3 s. The Battle
+   Machine / Flying Machine goes with one of the dragons.
+5. **Retry missed drops.** A card that still shows its troop-switch button was not deployed:
+   it is dropped again 2–3 tiles out on fresh zones, up to 5 rounds.
+6. **Abilities**: every card clicked together after a random 10–25 s (not in *Elixir* mode,
+   which surrenders right away).
+
+If no border shows, the bot falls back to the older diamond deploy.
+
+**Trophy mode, second village.** After the first village reaches 100% (read twice from the
+Overall Damage percent), the bot zooms out, selects a ready card and taps the village centre (on
+the buildings) so the game shows the border, then repeats steps 2–6 with the surviving dragons
+and the fresh cards only (grey cards are dead and skipped). With no border it uses a ring around
+the village centre.

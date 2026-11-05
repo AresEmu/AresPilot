@@ -1,7 +1,7 @@
 import json
 import sys
 from typing import Any, Dict, List, Optional, Tuple
-from app.utils.common import get_resource_path
+from app.utils.common import APP_NAME, get_resource_path
 from app.utils.logger import setup_logger
 logger = setup_logger('Config')
 ASPECT_16_10 = '16_10'
@@ -38,7 +38,7 @@ Settings → Game window) so they can pick the correct window manually.
         from PySide6.QtWidgets import QMessageBox
         box = QMessageBox(parent)
         box.setIcon(QMessageBox.Icon.Critical)
-        box.setWindowTitle('BasePilot')
+        box.setWindowTitle(APP_NAME)
         box.setText('Clash of Clans window not found.\nOpen the game, then press Start.')
         box.setInformativeText('If the game is already open, choose the correct window manually in Settings → Game window.')
         config_btn = None
@@ -87,7 +87,7 @@ is an optional callback used by the window-not-found dialog's 'Open configuratio
     try:
         from PySide6.QtWidgets import QMessageBox
         msg = 'Aspect ratio not supported (resize the game window to ~16:9 or ~16:10).'
-        QMessageBox.critical(parent, 'BasePilot', msg)
+        QMessageBox.critical(parent, APP_NAME, msg)
         
         try:
             return False
