@@ -1,4 +1,4 @@
-'''Profile preferences (JSON) under LOCALAPPDATA\\BasePilot, next to ``player_list.json``.'''
+'''Profile preferences (JSON) under LOCALAPPDATA\\AresPilot, next to ``player_list.json``.'''
 from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
@@ -11,6 +11,10 @@ EARTHQUAKE_METHOD_OPTIONS = (EARTHQUAKE_METHOD_CURVE, EARTHQUAKE_METHOD_RANDOM)
 SETTINGS_FILENAME = 'settings.json'
 WALL_UPGRADE_THRESHOLD_M_DEFAULT = 3
 WALL_UPGRADE_THRESHOLD_M_MAX = 20
+# Builder Base walls: millions like the Home Village, but with one decimal (BB
+# storages are small — 1.3M is a real setting).
+BB_WALL_UPGRADE_THRESHOLD_M_DEFAULT = 0.0
+BB_WALL_UPGRADE_THRESHOLD_M_MAX = 20.0
 RESERVE_BUILDERS_DEFAULT = 1
 RESERVE_BUILDERS_MAX = 5
 UPGRADE_ORDER_PRICIEST = 'priciest'
@@ -21,6 +25,7 @@ UPGRADE_ORDER_OPTIONS = (UPGRADE_ORDER_PRICIEST, UPGRADE_ORDER_CHEAPEST)
 class ProfileSettings:
     earthquake_method: 'str' = EARTHQUAKE_METHOD_CURVE
     wall_upgrade_threshold_m: 'int' = WALL_UPGRADE_THRESHOLD_M_DEFAULT
+    bb_wall_upgrade_threshold_m: 'float' = BB_WALL_UPGRADE_THRESHOLD_M_DEFAULT
     reserve_builders: 'int' = RESERVE_BUILDERS_DEFAULT
     upgrade_order: 'str' = UPGRADE_ORDER_PRICIEST
 
@@ -52,6 +57,26 @@ def _normalize_wall_threshold_m(raw):
     return max(0, min(WALL_UPGRADE_THRESHOLD_M_MAX, value))
 
 
+def _normalize_bb_wall_threshold_m(raw):
+    '''Millions (one decimal) of Builder Base gold/elixir that trigger BB wall upgrades;
+    0 = as soon as the loot pays two walls of the cheapest level.'''
+    try:
+        value = round(float(raw), 1)
+    except (TypeError, ValueError):
+        return BB_WALL_UPGRADE_THRESHOLD_M_DEFAULT
+    return max(0.0, min(BB_WALL_UPGRADE_THRESHOLD_M_MAX, value))
+
+
+def _bb_wall_threshold_from_json(raw):
+    '''``bb_wall_upgrade_threshold_m``; older files saved thousands under ``_k``.'''
+    if 'bb_wall_upgrade_threshold_m' in raw:
+        return _normalize_bb_wall_threshold_m(raw['bb_wall_upgrade_threshold_m'])
+    try:
+        return _normalize_bb_wall_threshold_m(float(raw.get('bb_wall_upgrade_threshold_k', 0)) / 1000)
+    except (TypeError, ValueError):
+        return BB_WALL_UPGRADE_THRESHOLD_M_DEFAULT
+
+
 def _normalize_upgrade_order(raw):
     if isinstance(raw, str) and raw.strip().lower() in UPGRADE_ORDER_OPTIONS:
         return raw.strip().lower()
@@ -80,6 +105,7 @@ def load_profile_settings():
         return ProfileSettings(
             earthquake_method = _normalize_earthquake_method(raw.get('earthquake_method')),
             wall_upgrade_threshold_m = _normalize_wall_threshold_m(raw.get('wall_upgrade_threshold_m', WALL_UPGRADE_THRESHOLD_M_DEFAULT)),
+            bb_wall_upgrade_threshold_m = _bb_wall_threshold_from_json(raw),
             reserve_builders = _normalize_reserve_builders(raw.get('reserve_builders', RESERVE_BUILDERS_DEFAULT)),
             upgrade_order = _normalize_upgrade_order(raw.get('upgrade_order', UPGRADE_ORDER_PRICIEST)))
     except (json.JSONDecodeError, OSError):
@@ -93,6 +119,7 @@ def save_profile_settings(settings):
     normalized = ProfileSettings(
         earthquake_method = _normalize_earthquake_method(settings.earthquake_method),
         wall_upgrade_threshold_m = _normalize_wall_threshold_m(getattr(settings, 'wall_upgrade_threshold_m', WALL_UPGRADE_THRESHOLD_M_DEFAULT)),
+        bb_wall_upgrade_threshold_m = _normalize_bb_wall_threshold_m(getattr(settings, 'bb_wall_upgrade_threshold_m', BB_WALL_UPGRADE_THRESHOLD_M_DEFAULT)),
         reserve_builders = _normalize_reserve_builders(getattr(settings, 'reserve_builders', RESERVE_BUILDERS_DEFAULT)),
         upgrade_order = _normalize_upgrade_order(getattr(settings, 'upgrade_order', UPGRADE_ORDER_PRICIEST)))
     payload = asdict(normalized)

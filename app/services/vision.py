@@ -799,16 +799,50 @@ Updates :class:`~app.config.Config` from ``screen_img`` so template paths match 
             def for_rect(left, top, tw, th, conf):
                 return VisionService._upgrade_cost_redness_for_template_rect(screen_img, left, top, tw, th, conf, center_offset = center_offset, roi_w = roi_w, roi_h = roi_h, frame_w = frame_w, frame_h = frame_h)
 
+            # UI ottobre 2026: every pay button is its own match, and the icon at the end
+            # of its price line says which resource it takes (yellow coin / purple drop).
+            # Gold-only wall levels show ONE button — never split it into two halves
+            # (live BB 30/10: its right half was taken for elixir and the bot paid gold).
+            kinds = [VisionService._pay_button_resource(screen_img, m, center_offset, roi_h) for m in matches]
             if len(matches) == 1:
                 (left, top, tw, th, conf) = matches[0]
+                if kinds[0] == 'gold':
+                    return UpgradeCostRednessPair(for_rect(*matches[0]), miss)
+                if kinds[0] == 'elixir':
+                    return UpgradeCostRednessPair(miss, for_rect(*matches[0]))
                 half = max(1, tw // 2)
                 gold = for_rect(left, top, half, th, conf)
                 elixir = for_rect(left + half, top, tw - half, th, conf)
             else:
-                matches = sorted(matches, key = (lambda m: m[0]))
-                gold = for_rect(*matches[0])
-                elixir = for_rect(*matches[1])
+                order = sorted(range(len(matches)), key = (lambda i: matches[i][0]))
+                if [kinds[i] for i in order] == ['elixir', 'gold']:
+                    order.reverse()
+                gold = for_rect(*matches[order[0]])
+                elixir = for_rect(*matches[order[1]])
             return UpgradeCostRednessPair(gold, elixir)
+
+        @staticmethod
+        def _pay_button_resource(screen_img, match, center_offset, roi_h):
+            '''"gold" / "elixir" from the icon colour on the price line above a pay button
+            (measured: 6.9% yellow vs 0% purple over the gold one, the reverse over the
+            elixir one), or None when the line shows neither or both.'''
+            (left, top, tw, th, _conf) = match
+            (fh, fw) = screen_img.shape[:2]
+            cx = int(left) + int(tw) // 2
+            cy = int(top) + int(th) // 2 - int(center_offset)
+            (x0, x1) = (max(0, int(cx - 1.4 * tw)), min(fw, int(cx + 1.4 * tw)))
+            (y0, y1) = (max(0, int(cy - roi_h)), min(fh, int(cy + roi_h)))
+            if x1 <= x0 or y1 <= y0:
+                return None
+            hsv = cv2.cvtColor(screen_img[y0:y1, x0:x1], cv2.COLOR_BGR2HSV)
+            (h, s, v) = (hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2])
+            yellow = float(((h >= 18) & (h <= 35) & (s > 120) & (v > 150)).mean())
+            purple = float(((h >= 125) & (h <= 160) & (s > 80) & (v > 80)).mean())
+            if yellow >= 0.02 and purple < 0.01:
+                return 'gold'
+            if purple >= 0.02 and yellow < 0.01:
+                return 'elixir'
+            return None
 
         
         @staticmethod

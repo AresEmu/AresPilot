@@ -117,5 +117,28 @@ class EventTests(unittest.TestCase):
         self.assertEqual(self.input.click.call_count, 2)
 
 
+class StarBonusTests(unittest.TestCase):
+    def _bot(self, matches):
+        bot = Bot.__new__(Bot)
+        bot.stop_event = Mock()
+        bot.stop_event.is_set.return_value = False
+        bot.stop_event.wait.return_value = False
+        bot.input, bot.window, bot.vision = Mock(), Mock(), Mock()
+        bot._update_config_size = Mock()
+        bot.window.screenshot.return_value = np.zeros((1440, 2560, 3), dtype=np.uint8)
+        bot.vision.find_template.side_effect = matches
+        return bot
+
+    def test_popup_okay_is_clicked_below_the_title(self):
+        bot = self._bot([(1280, 308), (None, None)])
+        self.assertTrue(bot._bb_dismiss_star_bonus())
+        bot.input.click.assert_called_once_with(1280, 308 + round(1440 * 0.552), pause=0.4)
+
+    def test_no_popup_no_click(self):
+        bot = self._bot([(None, None)])
+        self.assertFalse(bot._bb_dismiss_star_bonus())
+        bot.input.click.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

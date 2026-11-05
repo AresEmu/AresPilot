@@ -1,5 +1,6 @@
 import time
 from app.core.battle_rewards import BattleRewards
+from app.core import bb_edge
 import random
 import threading
 from typing import Callable, List, Optional, Tuple
@@ -30,10 +31,58 @@ _BB_TEMPLATE_SUPPRESS_PAD = 0.1
 _BB_FULL_ELIXIR_CART_TEMPLATES = ('fullecart.png', 'fullecart2.png', 'fullecart3.png')
 _BB_COLLECT_TEMPLATE = 'collect.png'
 _BB_STAR_BONUS_TEMPLATE = 'bstar.png'
+# "Star Bonus!" reward popup (Oct 2026 UI): its Okay sits this far (frame heights) below the title.
+_BB_STAR_BONUS_POPUP_TEMPLATE = 'starbonus.png'
+_BB_STAR_BONUS_OKAY_DY = 0.552
 _BB_BATTLE_STAR_TEMPLATE = 'bbstar.png'
 _BB_BATTLE_MACHINE_TEMPLATE = 'battlemachine.png'
 _BB_FLYING_MACHINE_TEMPLATE = 'flyingmachine.png'
 _BB_GOLD_PRIORITISE_MIN_STARS = 2
+# Trophy prioritise: the battle is never ended early — stage 1 runs to 100%, the bot attacks
+# the second village (stage 2) with the cards the troop bar offers there, then waits for the
+# result screen. Battle time is capped well above both stages together.
+_BB_TROPHY_BATTLE_TIMEOUT = 330
+# Stage 2 starts once "Overall Damage" (bottom right) reads >= 100% on two reads in a row;
+# the camera then flies to the second village, so the deploy waits this long after it.
+_BB_TROPHY_STAGE2_SETTLE = 4.0
+_BB_TROPHY_MAX_STAGE2_DEPLOYS = 1
+_BB_TROPHY_REDEPLOY_WAIT = 6.0
+# "Overall Damage  ★★★ 106%": the percent only (fractions of the 16:9 frame, measured 2560x1440).
+_BB_DAMAGE_PERCENT_ROI = (0.925, 0.78, 0.99, 0.83)
+# Troop bar: one card per camp, 1st card centre x 0.1732, one card every 0.0659, icon at y 0.93.
+_BB_CARD_SLOT_X0 = 0.1732
+_BB_CARD_SLOT_STEP = 0.0659
+_BB_CARD_SLOT_Y = 0.93
+_BB_CARD_SLOTS = 11
+# Where a card is tapped: on the dragon's head. The green troop-switch button covers the
+# lower half of the card (y 0.94-0.97, from just left of the centre), so never tap there.
+_BB_CARD_TAP_Y = 0.905
+_BB_CARD_TAP_DX = -0.006
+# Troop-switch button (white arrows on green, bottom right of the card): shown only while the
+# card's troop has not been deployed yet — it is gone once the troop is on the field.
+# White pixels in its box: ~0.32 with the button, 0.00 without (measured both stages).
+_BB_SWITCH_BOX = (-0.002, 0.945, 0.024, 0.968)   # x0, x1 from the slot centre; y0, y1
+_BB_SWITCH_MIN_WHITE = 0.15
+# Ready card: coloured and lit (measured sat ~130-143, val ~165); dead card: grey (sat 0);
+# empty dashed slot: dark (val < 60).
+_BB_CARD_READY_MIN_SAT = 60
+_BB_CARD_READY_MIN_VAL = 100
+# Baby Dragon edge deploy (both stages): full zoom-out, read the red border while the game
+# shows it (a few seconds), one dragon per zone 2-8 tiles outside it, all within ~3 s.
+_BB_ZOOM_OUT_CLICKS = 10
+_BB_BORDER_READS = 4
+_BB_BORDER_READ_GAP = 0.2
+# Card select needs time to register before the drop (0.11 s was too short live); card +
+# drop ~0.35 s per troop: 8 troops ~2.8 s, inside the 3 s window.
+_BB_CARD_SELECT_PAUSE = 0.22
+_BB_DEPLOY_CLICK_PAUSE = 0.12
+# Dragons still on the bar after the drop (switch button still there): dropped again, closer
+# to the border (2-3 tiles) on fresh zones, until placed or these rounds run out.
+_BB_DEPLOY_RETRIES = 5
+_BB_DEPLOY_RETRY_DISTANCE = (2.0, 3.0)
+_BB_DEPLOY_CHECK_WAIT = 0.35
+# Abilities: every deployed card clicked together, once, after a random cooldown.
+_BB_ABILITY_DELAY = (10.0, 25.0)
 _BB_RETURN_HOME_END_BATTLE_RETRIES = 5
 _STAR_BONUS_THRESHOLD = 0.75
 _TROOP_FAILURE_LIMIT = 4
@@ -44,6 +93,11 @@ _WALL_MENU_SCROLL_STEPS = 8  # OCR positions polled: as-opened + 7 wheel nudges 
 _WALL_MENU_WHEEL_CLICKS = 2  # ~3-4 rows per nudge; the OCR band spans the whole popup so a nudge cannot jump the Wall row past it
 _WALL_ROW_STABLE_TOL = 30  # ref px: max y drift between consecutive frames before the row is trusted for a click
 _WALL_PANEL_SCROLL_STEPS = 14  # Build panel (UI ottobre 2026): ~35 rows, Wall sits in the last quarter
+# Builder Base walls: open the Build panel only when the loot pays at least this many
+# walls of the cheapest known level (one wall is not worth the ~20 s round).
+_BB_WALL_MIN_WALLS = 2
+# ...and keeps buying batches (up to this many per check) while the loot still pays that.
+_BB_WALL_MAX_ROUNDS = 5
 _WALL_GOLD_ATTACK_BUFFER = 50000  # gold kept for the Find a Match fee (same margin as UpgradePolicy)
 _WALL_BAR_PITCH_FRAC = 0.081  # wall bar button pitch at 1x (frame-width fraction, 2559-wide frames)
 _WALL_BAR_SCALES = (1.0, 0.95, 0.9, 0.85)  # wall selection bar: 1x on the map, ~0.90x beside the open Build panel
@@ -85,7 +139,7 @@ class Bot:
         self._suppress_loot_negative_error_once = False
 
     
-    def start(self, method, run_time_minutes, star_bonus = False, status_callback = None, loot_callback = None, multi_run_players = None, ranked_fill = False, upgrade_walls = False, earthquake_method = EARTHQUAKE_METHOD_CURVE, builder_base = False, loot_prioritise = 'both', wall_upgrade_threshold = 0, auto_upgrade = MODE_OFF, reserve_builders = 1, state_callback = None, upgrade_order = None):
+    def start(self, method, run_time_minutes, star_bonus = False, status_callback = None, loot_callback = None, multi_run_players = None, ranked_fill = False, upgrade_walls = False, earthquake_method = EARTHQUAKE_METHOD_CURVE, builder_base = False, loot_prioritise = 'both', wall_upgrade_threshold = 0, auto_upgrade = MODE_OFF, reserve_builders = 1, state_callback = None, upgrade_order = None, bb_wall_upgrade_threshold = 0):
         '''Starts the bot loop. With ``multi_run_players``, runs a full session per enabled player.
         ``run_time_minutes <= 0`` (single Home Village runs only) means UNLIMITED — farm,
         upgrade and idle until the user stops the bot ("run until maxed").'''
@@ -100,18 +154,19 @@ class Bot:
         self._emit_loot_update()
         self.running = True
         self.stop_event.clear()
-        unlimited = not star_bonus and multi_run_players is None and not builder_base and int(run_time_minutes or 0) <= 0
+        unlimited = not star_bonus and multi_run_players is None and int(run_time_minutes or 0) <= 0
         duration = 900 if star_bonus else (0 if unlimited else max(1, int(run_time_minutes)) * 60)
         mr = multi_run_players is not None
         self._builder_base = builder_base
         self._loot_prioritise = loot_prioritise
         self._wall_upgrade_threshold = max(0, int(wall_upgrade_threshold or 0))
+        self._bb_wall_upgrade_threshold = max(0, int(bb_wall_upgrade_threshold or 0))
         self._auto_upgrade_mode = auto_upgrade if auto_upgrade in AUTO_UPGRADE_MODES else MODE_OFF
         self._auto_upgrade_last_scan = 0
         self._reserve_builders = max(0, int(reserve_builders or 0))
         self._upgrade_order = upgrade_order
         self._advisor = None  # one UpgradeAdvisor per session (it holds execution cooldowns)
-        logger.info(f'''Bot started. Method: {method}, Time: {'unlimited' if unlimited else f'{run_time_minutes}m'}, StarBonus: {star_bonus}, MultiRun: {mr}, RankedFill: {ranked_fill}, UpgradeWalls: {upgrade_walls}, WallThreshold: {self._wall_upgrade_threshold}, AutoUpgrade: {self._auto_upgrade_mode}, ReserveBuilders: {self._reserve_builders}, Earthquake: {earthquake_method}, BuilderBase: {builder_base}, LootPrioritise: {loot_prioritise}''')
+        logger.info(f'''Bot started. Method: {method}, Time: {'unlimited' if unlimited else f'{run_time_minutes}m'}, StarBonus: {star_bonus}, MultiRun: {mr}, RankedFill: {ranked_fill}, UpgradeWalls: {upgrade_walls}, WallThreshold: {self._wall_upgrade_threshold}, BBWallThreshold: {self._bb_wall_upgrade_threshold}, AutoUpgrade: {self._auto_upgrade_mode}, ReserveBuilders: {self._reserve_builders}, Earthquake: {earthquake_method}, BuilderBase: {builder_base}, LootPrioritise: {loot_prioritise}''')
 
         try:
 
@@ -130,7 +185,7 @@ class Bot:
                     self._check_stop()
             elif self._builder_base:  # [recovered: decompiler nested this single-run block inside the multi-run `if`]
                 self._ensure_correct_village(builder_base = True)
-                self._run_builder_base_loop(duration, star_bonus = star_bonus)
+                self._run_builder_base_loop(duration, star_bonus = star_bonus, upgrade_walls = upgrade_walls)
             else:
                 self._ensure_correct_village(builder_base = False)
                 self._run_loop(method, duration, star_bonus, ranked_fill, upgrade_walls)
@@ -177,6 +232,7 @@ class Bot:
     def _reset_run_stats(self):
         self._run_started_mono = time.monotonic()
         self._attacks_done = 0
+        self._bb_attacks_done = 0
         self._walls_upgraded = []  # dicts: count, from_level, cost, resource
         self.last_run_summary = None
         self.last_run_stats = None
@@ -190,8 +246,16 @@ class Bot:
         for w in walls:
             if w.get('cost') and w.get('resource') in spent:
                 spent[w['resource']] += w['cost']
+        duration = int(max(0, time.monotonic() - getattr(self, '_run_started_mono', time.monotonic())))
+        if getattr(self, '_builder_base', False):
+            # Builder Base runs have their own "Last session" card in the UI.
+            return {'village': 'builder', 'duration_s': duration,
+                    'attacks': int(getattr(self, '_bb_attacks_done', 0)),
+                    'walls': int(sum(w['count'] for w in walls)),
+                    'walls_gold': spent['gold'], 'walls_elixir': spent['elixir']}
         return {
-            'duration_s': int(max(0, time.monotonic() - getattr(self, '_run_started_mono', time.monotonic()))),
+            'village': 'home',
+            'duration_s': duration,
             'attacks': int(getattr(self, '_attacks_done', 0)),
             'gold': int(gold), 'elixir': int(elixir), 'dark': int(dark),
             'walls': int(sum(w['count'] for w in walls)),
@@ -262,12 +326,19 @@ class Bot:
         (gold, elixir, dark) = getattr(self, '_loot_totals', (0, 0, 0))
         walls = getattr(self, '_walls_upgraded', [])
         names = {'gold': 'oro', 'elixir': 'elisir'}
-        lines = [
-            '===== Riepilogo run =====',
-            f'Durata: {elapsed // 3600}h {elapsed % 3600 // 60:02d}m {elapsed % 60:02d}s',
-            f'Attacchi: {getattr(self, "_attacks_done", 0)}',
-            f'Risorse farmate: oro {self._fmt_int(gold)} | elisir {self._fmt_int(elixir)} | dark {self._fmt_int(dark)}',
-            f'Muri migliorati: {sum(w["count"] for w in walls)}']
+        if getattr(self, '_builder_base', False):
+            lines = [
+                '===== Riepilogo run (Builder Base) =====',
+                f'Durata: {elapsed // 3600}h {elapsed % 3600 // 60:02d}m {elapsed % 60:02d}s',
+                f'Attacchi Builder Base: {getattr(self, "_bb_attacks_done", 0)}',
+                f'Muri migliorati: {sum(w["count"] for w in walls)}']
+        else:
+            lines = [
+                '===== Riepilogo run =====',
+                f'Durata: {elapsed // 3600}h {elapsed % 3600 // 60:02d}m {elapsed % 60:02d}s',
+                f'Attacchi: {getattr(self, "_attacks_done", 0)}',
+                f'Risorse farmate: oro {self._fmt_int(gold)} | elisir {self._fmt_int(elixir)} | dark {self._fmt_int(dark)}',
+                f'Muri migliorati: {sum(w["count"] for w in walls)}']
         # One line per wall level: count and spend per resource summed over the run.
         groups = {}
         spent = {}
@@ -572,6 +643,12 @@ past the bottom is a harmless no-op, so this can be called repeatedly.
         is only REPLACED by a wall walk that covered the whole list (see
         _find_wall_row_build_panel) — merged scan rows can fold same-label levels.'''
         costs = {r.cost for r in rows if is_wall_row(r) and r.cost}
+        resources = getattr(self, '_wall_cost_resource', None)
+        if resources is None:
+            resources = self._wall_cost_resource = {}
+        for r in rows:
+            if is_wall_row(r) and r.cost and getattr(r, 'resource', None):
+                resources[r.cost] = r.resource
         if costs:
             self._wall_costs = set(getattr(self, '_wall_costs', set())) | costs
         return costs
@@ -579,18 +656,33 @@ past the bottom is a harmless no-op, so this can be called repeatedly.
     def _wall_costs_text(self):
         return sorted(getattr(self, '_wall_costs', set()) or [])
 
-    @staticmethod
-    def _wall_payable(cost, triplet):
-        (gold, elixir, _dark) = triplet
-        return gold - _WALL_GOLD_ATTACK_BUFFER >= cost or elixir >= cost
+    def _wall_gold_only(self, cost):
+        '''Wall level that takes gold only: its multi bar showed no elixir button, or (Builder
+        Base) its Build-panel row is priced in gold — low BB wall levels have no elixir option.'''
+        if cost in getattr(self, '_wall_gold_only_costs', set()):
+            return True
+        return getattr(self, '_builder_base', False) and getattr(self, '_wall_cost_resource', {}).get(cost) == 'gold'
 
-    def _can_pay_any_wall(self, triplet):
-        '''True / False against the cheapest known wall level; None when unknown (no
-        prices saved yet, or the HUD did not read) — callers then fall back to trying.'''
+    def _wall_payable(self, cost, triplet, walls = 1):
+        (gold, elixir, _dark) = triplet
+        reserve = 0 if getattr(self, '_builder_base', False) else _WALL_GOLD_ATTACK_BUFFER
+        if gold - reserve >= cost * walls:
+            return True
+        return not self._wall_gold_only(cost) and elixir >= cost * walls
+
+    def _can_pay_any_wall(self, triplet, walls = 1):
+        '''True / False: some known wall level is payable (gold-only levels by gold alone);
+        None when unknown (no prices saved yet, or the HUD did not read) — callers then
+        fall back to trying.'''
         costs = getattr(self, '_wall_costs', None)
         if not costs or triplet is None:
             return None
-        return self._wall_payable(min(costs), triplet)
+        return any(self._wall_payable(cost, triplet, walls) for cost in costs)
+
+    @staticmethod
+    def _pay_slot_blocked(slot):
+        '''A pay button that is missing (gold-only level: no elixir button), unmeasured or red.'''
+        return not slot.found or slot.cost_roi_xywh is None or slot.redness >= 0.2
 
     def _deselect_wall_ui(self):
         '''Tap empty ground to close the wall selection bar / gem dialog remnants. The wall
@@ -636,6 +728,68 @@ deselect, which would eat the upcoming Attack click.'''
             logger.info('Wall upgrades: nothing confirmed this round')
         self._suppress_loot_negative_error_once = True
 
+
+    def _maybe_upgrade_bb_walls(self, upgrade_walls):
+        '''Builder Base walls, between attacks: same Build-panel flow as the Home Village
+        (Wall row → Upgrade More → add while payable → elixir first → Okay). Opens the
+        panel once to learn the wall prices, then only when the HUD pays at least
+        _BB_WALL_MIN_WALLS walls of the cheapest level. No loot tracker here — the BB
+        has no gold/elixir/dark loot session.'''
+        if not upgrade_walls:
+            return None
+        frame = self.window.screenshot()
+        if frame is None:
+            return None
+        self._update_config_size(frame)
+        triplet = read_hud_triplet(frame)
+        costs = getattr(self, '_wall_costs', None)
+        if costs:
+            if triplet is None:
+                return None
+            threshold = int(getattr(self, '_bb_wall_upgrade_threshold', 0) or 0)
+            if threshold > 0:
+                # The user's own amount, and at least one wall level must be payable
+                # with what is there (gold-only levels by gold alone).
+                reason = f'threshold {threshold}'
+                if (triplet[0] < threshold and triplet[1] < threshold) or not self._can_pay_any_wall(triplet):
+                    return None
+            else:
+                reason = f'{_BB_WALL_MIN_WALLS}+ walls of a payable level'
+                if not self._can_pay_any_wall(triplet, _BB_WALL_MIN_WALLS):
+                    return None
+            logger.info('Builder Base walls: gold=%s elixir=%s reached %s — upgrading', triplet[0], triplet[1], reason)
+        elif getattr(self, '_bb_wall_probed', False):
+            return None  # prices unknown after one look: no Wall row to upgrade
+        else:
+            if not self.vision.find_template(frame, 'attack.png', region = VisionService.bottom_half_region(frame))[0]:
+                return None  # not home yet (popup, battle): look for the prices next time
+            logger.info('Builder Base walls: first pass — reading the wall prices')
+        self._bb_wall_probed = True
+        cb = getattr(self, '_status_callback', None)
+        if cb:
+            cb('Builder Base: upgrading walls...')
+        rounds = 0
+        for round_no in range(_BB_WALL_MAX_ROUNDS):
+            self._check_stop()
+            if round_no:
+                # Another batch only while what is LEFT pays two walls of the cheapest level.
+                triplet = self._read_hud_triplet_stable()
+                costs = getattr(self, '_wall_costs', None)
+                if triplet is None or not costs:
+                    break
+                if not self._can_pay_any_wall(triplet, _BB_WALL_MIN_WALLS):
+                    logger.info('Builder Base walls: gold=%s elixir=%s left — not enough for another batch', triplet[0], triplet[1])
+                    break
+                logger.info('Builder Base walls: round %d — gold=%s elixir=%s still pay more walls', round_no + 1, triplet[0], triplet[1])
+            self._wall_upgrade_confirmed = False
+            self._upgrade_walls()
+            self._deselect_wall_ui()
+            if not self._wall_upgrade_confirmed:
+                break
+            rounds += 1
+        if rounds:
+            logger.info('Builder Base walls: %d batch(es) confirmed this check', rounds)
+        return None
 
     def _maybe_auto_upgrade(self, force = False):
         '''Interval-gated builder-popup scan + upgrade decision/execution (see
@@ -921,16 +1075,30 @@ deselect, which would eat the upcoming Attack click.'''
         then the bar title OCR (live misread: "x 4" → 48), else 1.'''
         batch = getattr(self, '_wall_batch_count', None)
         self._wall_batch_count = None
-        if cost and per_wall and cost % per_wall == 0 and 1 <= cost // per_wall <= _WALL_BATCH_MAX_ADDS:
+        if cost and per_wall and cost % per_wall == 0 and 1 <= cost // per_wall <= _WALL_BATCH_MAX_ADDS + 1:
             count = cost // per_wall
             if batch and batch != count:
                 logger.info('Wall upgrade: %s wall(s) added but the loot drop pays for %s — using %s', batch, count, count)
             return count
         if batch:
             return batch
-        if ocr_count and 1 <= ocr_count <= _WALL_BATCH_MAX_ADDS:
+        if ocr_count and 1 <= ocr_count <= _WALL_BATCH_MAX_ADDS + 1:
             return ocr_count
         return max(1, round(cost / per_wall)) if cost and per_wall else 1
+
+    def _walls_popup_payable(self, walls_dialog):
+        '''True when the HUD's amount of the popup's resource covers its price (Home
+        Village gold keeps the matchmaking fee back; the Builder Base has no fee).'''
+        index = {'gold': 0, 'elixir': 1}.get(walls_dialog.resource)
+        if index is None or not walls_dialog.price:
+            return False
+        # The popup dims the HUD (digits unreadable — live BB 30/10): use the read taken
+        # just before the resource click, the live one only as a fallback.
+        triplet = (getattr(self, '_wall_pending', None) or {}).get('hud_before') or self._read_hud_triplet_stable()
+        if triplet is None:
+            return False
+        reserve = _WALL_GOLD_ATTACK_BUFFER if index == 0 and not getattr(self, '_builder_base', False) else 0
+        return triplet[index] - reserve >= walls_dialog.price
 
     def _confirm_wall_dialog(self, paid_with = None):
         '''UI ottobre 2026: the resource button opens one of two dialogs —
@@ -954,9 +1122,15 @@ deselect, which would eat the upcoming Attack click.'''
                 return
         if walls_dialog is not None:
             if paid_with and walls_dialog.resource and walls_dialog.resource != paid_with:
-                logger.warning('Wall upgrade: popup asks for %s, the bot paid with %s — cancelling', walls_dialog.resource, paid_with)
-                panel.close_all()
-                return
+                # Live BB 30/10: low wall levels are gold-only, the click landed on the gold
+                # button while the bar read it as elixir. The popup names the resource and
+                # the price — confirm only when the HUD shows THAT resource pays it.
+                if not self._walls_popup_payable(walls_dialog):
+                    logger.warning('Wall upgrade: popup asks for %s %s, the bot paid with %s and the HUD cannot cover it — cancelling', walls_dialog.price, walls_dialog.resource, paid_with)
+                    panel.close_all()
+                    return
+                logger.info('Wall upgrade: popup asks for %s instead of %s — the HUD covers %s, confirming', walls_dialog.resource, paid_with, walls_dialog.price)
+                paid_with = walls_dialog.resource
             logger.info('Wall upgrade: confirming the batch (%s %s) with Okay', walls_dialog.price, walls_dialog.resource)
             outcome = panel.click_walls_okay_and_check(walls_dialog)
             if outcome == 'ok':
@@ -1305,6 +1479,18 @@ deselect, which would eat the upcoming Attack click.'''
         finally:
             VisionService.set_ui_scale(previous)
 
+    def _note_wall_pay_options(self, pair):
+        '''Gold button but no elixir button on the multi bar: this wall level is gold-only.'''
+        cost = getattr(self, '_wall_pick_cost', None)
+        if not cost or not pair.gold.found or pair.elixir.found:
+            return
+        gold_only = getattr(self, '_wall_gold_only_costs', None)
+        if gold_only is None:
+            gold_only = self._wall_gold_only_costs = set()
+        if cost not in gold_only:
+            gold_only.add(cost)
+            logger.info('Wall upgrade: wall level at %s per wall takes gold only (no elixir button)', cost)
+
     def _upgrade_walls_batch(self, umx, umy):
         '''Upgrade More is on screen at (umx, umy): build the batch and pay for it.'''
         self.input.click(umx, umy, pause = 0.4)
@@ -1325,7 +1511,8 @@ deselect, which would eat the upcoming Attack click.'''
                 # (incl. the Attack button checkmark), so never click blind.
                 logger.info('Wall upgrade: cost buttons not visible — popup not open, stopping batch')
                 break
-            if pair.gold.redness >= 0.2 and pair.elixir.redness >= 0.2:
+            self._note_wall_pay_options(pair)
+            if self._pay_slot_blocked(pair.gold) and self._pay_slot_blocked(pair.elixir):
                 break
             (awx, awy) = self._find_in_bar(VisionService.find_active_addwall, frame, pair, scale)
             if not awx:
@@ -1345,13 +1532,14 @@ deselect, which would eat the upcoming Attack click.'''
             logger.info('Wall upgrade: cost buttons gone after adding walls — not paying')
             self._deselect_wall_ui()
             return None
-        if added and pair.gold.redness >= 0.2 and pair.elixir.redness >= 0.2:
+        if added and self._pay_slot_blocked(pair.gold) and self._pay_slot_blocked(pair.elixir):
             # Last add pushed the total over both resources — take one back before confirming.
             (rwx, rwy) = self._find_in_bar(VisionService.find_active_removewall, frame, pair, scale)
             if rwx:
                 self.input.click(rwx, rwy, pause = 0.4)
                 removed += 1
-        elif added > 1 and pair.elixir.redness >= 0.2 and pair.gold.redness < 0.2 and pair.gold.cost_roi_xywh:
+        elif (added > 1 and not getattr(self, '_builder_base', False) and self._pay_slot_blocked(pair.elixir)
+              and not self._pay_slot_blocked(pair.gold)):
             # Gold will pay (elixir can't) — drop one wall so a maxed batch never drains gold
             # to 0. Find a Match costs ~1300 gold; a zeroed gold storage blocks all attacking.
             (rwx, rwy) = self._find_in_bar(VisionService.find_active_removewall, frame, pair, scale)
@@ -1362,7 +1550,7 @@ deselect, which would eat the upcoming Attack click.'''
         logger.info('Wall upgrade: %d wall(s) added to batch', added)
         # What the bot itself put in the batch: the run summary's wall count (the bar
         # title OCR misreads it — live: "x 4" read as 48).
-        self._wall_batch_count = max(1, added - removed)
+        self._wall_batch_count = max(1, 1 + added - removed)  # + the wall the row click selected
         self._upgrade_walls_pick_resource_and_okay()
 
     
@@ -1497,9 +1685,14 @@ deselect, which would eat the upcoming Attack click.'''
         return None
 
     
-    def _run_builder_base_loop(self, duration_seconds, star_bonus = False):
+    def _run_builder_base_loop(self, duration_seconds, star_bonus = False, upgrade_walls = False):
         '''Builder Base farming: Attack → Find Now → Baby Dragon deploy → end battle or surrender → Return Home.'''
         start_time = time.time()
+        # Wall prices are per village: never carry Home Village levels into the BB.
+        self._wall_costs = set()
+        self._wall_cost_resource = {}
+        self._wall_gold_only_costs = set()
+        self._bb_wall_probed = False
         cb = getattr(self, '_status_callback', None)
         if self.stop_event.wait(1):
             return None
@@ -1517,14 +1710,18 @@ deselect, which would eat the upcoming Attack click.'''
             if cb:
                 cb(msg)
             return None
-        while time.time() - start_time < duration_seconds:
+        # duration_seconds == 0 → unlimited ("run until maxed"): only Stop ends the run.
+        while duration_seconds <= 0 or time.time() - start_time < duration_seconds:
             self._check_stop()
+            self._bb_dismiss_star_bonus()
+            self._maybe_upgrade_bb_walls(upgrade_walls)
             self.input.scroll(*self._scroll_point(), 20)
             if self.stop_event.wait(random.uniform(0.1, 0.25)):
                 return None
             (ax, ay) = self._wait_for_image('attack.png', timeout = 10)
             if not ax:
                 logger.warning('Builder Base: attack.png not found')
+                self._bb_recover_from_battle()
                 continue
             self.input.click(ax, ay, pause = 0.15)
             (fx, fy) = self._wait_for_image('findnow.png', timeout = 10)
@@ -1543,26 +1740,16 @@ deselect, which would eat the upcoming Attack click.'''
             if frame is None:
                 continue
             self._update_config_size(frame)
-            (h, w) = frame.shape[:2]
-            cy = h // 2
-            cx = w // 2
-            self.input.move(cx, cy)
-            if self.stop_event.wait(0.05):
-                return None
-            self.input.scroll(cx, cy, 4)
-            if self.stop_event.wait(0.15):
-                return None
-            frame = self.window.screenshot()
-            if frame is None:
-                continue
-            self._update_config_size(frame)
             if not self._deploy_bb_baby_dragons(frame):
-                logger.warning('Builder Base: babydragon.png lost after zoom nudge / deploy failed')
+                logger.warning('Builder Base: no Baby Dragon card on the bar / deploy failed')
                 continue
+            self._bb_attacks_done = getattr(self, '_bb_attacks_done', 0) + 1
             if self._loot_prioritise == 'elixir':
                 self._bb_surrender_and_return_home()
             elif self._loot_prioritise == 'gold':
                 self._bb_gold_prioritise_end_battle_and_return_home()
+            elif self._loot_prioritise == 'trophy':
+                self._bb_trophy_play_both_stages_and_return_home()
             else:
                 self._bb_end_battle_and_return_home()
             self._bb_collect_elixir_cart_after_attack()
@@ -1618,10 +1805,33 @@ deselect, which would eat the upcoming Attack click.'''
         return (None, None)
 
     
+    def _bb_dismiss_star_bonus(self, attempts = 3):
+        '''Close the "Star Bonus!" popup (shown after the daily star bonus is earned) via its
+Okay button. Returns True when the popup was found and closed.'''
+        for _ in range(attempts):
+            self._check_stop()
+            frame = self.window.screenshot()
+            if frame is None:
+                return False
+            self._update_config_size(frame)
+            (tx, ty) = self.vision.find_template(frame, _BB_STAR_BONUS_POPUP_TEMPLATE)
+            if not tx:
+                return False
+            logger.info('Builder Base: Star Bonus popup — clicking Okay')
+            self.input.click(tx, ty + round(frame.shape[0] * _BB_STAR_BONUS_OKAY_DY), pause = 0.4)
+            if self.stop_event.wait(0.6):
+                return False
+            frame = self.window.screenshot()
+            if frame is not None and not self.vision.find_template(frame, _BB_STAR_BONUS_POPUP_TEMPLATE)[0]:
+                return True
+        logger.warning('Builder Base: Star Bonus popup still open after %d clicks', attempts)
+        return False
+
     def _bb_collect_elixir_cart_after_attack(self):
         '''After a BB raid: dismiss popups, pan to cart, collect full elixir cart if visible.'''
         if self.stop_event.wait(0.35):
             return None
+        self._bb_dismiss_star_bonus()
         self.input.click(pause = 0.15, *self.config.get_point('empty'))
         if self.stop_event.wait(0.15):
             return None
@@ -1639,8 +1849,165 @@ deselect, which would eat the upcoming Attack click.'''
         self.input.click(pause = 0.15, *self.config.get_point('empty'))
 
     
+    def _bb_zoom_out(self, frame):
+        '''Full zoom-out at the screen centre (fast wheel: the red border shows only briefly).'''
+        (h, w) = frame.shape[:2]
+        (cx, cy) = (w // 2, h // 2)
+        self.input.move(cx, cy)
+        self.input.scroll(cx, cy, _BB_ZOOM_OUT_CLICKS, pause = (0.02, 0.05))
+        self.stop_event.wait(0.25)
+
+    def _bb_read_border(self, reads = _BB_BORDER_READS):
+        '''(frame, hull) of the clearest red border over a few quick screenshots, or
+        (last frame, None) when none showed.'''
+        (best_frame, best_hull, best_n, last) = (None, None, -1, None)
+        for i in range(reads):
+            self._check_stop()
+            frame = self.window.screenshot()
+            if frame is not None:
+                self._update_config_size(frame)
+                last = frame
+                hull = bb_edge.border_hull(frame)
+                if hull is not None:
+                    n = len(bb_edge.border_segments(frame))
+                    if n > best_n:
+                        (best_frame, best_hull, best_n) = (frame, hull, n)
+                    if n >= 20:
+                        break
+            if i + 1 < reads and self.stop_event.wait(_BB_BORDER_READ_GAP):
+                break
+        if best_hull is None:
+            return (last, None)
+        return (best_frame, best_hull)
+
+    def _bb_dragon_cards(self, frame):
+        '''(dragon card tap points, machine card tap point or None) on the troop bar: every
+        ready (coloured) slot is a dragon except the Battle / Flying Machine card. Tap points
+        sit on the card's upper half, clear of the troop-switch button.'''
+        (h, w) = frame.shape[:2]
+        roi = VisionService.bottom_half_region(frame)
+        machine = None
+        for template in (_BB_BATTLE_MACHINE_TEMPLATE, _BB_FLYING_MACHINE_TEMPLATE):
+            (mx, my) = self.vision.find_template(frame, template, region = roi)
+            if mx:
+                machine = (int(mx), int(my))
+                break
+        slots = self._bb_ready_card_slots(frame)
+        half_step = _BB_CARD_SLOT_STEP * w / 2
+        if machine is not None:
+            slots = [c for c in slots if abs(c[0] - machine[0]) > half_step]
+            # Snap the template hit to its slot so the machine is tapped like the dragons.
+            index = round((machine[0] / w - _BB_CARD_SLOT_X0) / _BB_CARD_SLOT_STEP)
+            if 0 <= index < _BB_CARD_SLOTS:
+                machine = (int((_BB_CARD_SLOT_X0 + index * _BB_CARD_SLOT_STEP) * w), machine[1])
+            machine = self._bb_card_tap_point(machine, w, h)
+        return ([self._bb_card_tap_point(c, w, h) for c in slots], machine)
+
+    @classmethod
+    def _bb_undeployed_slots(cls, frame):
+        '''Tap points of the cards whose troop is not on the field yet (switch button shown).'''
+        import cv2
+        (h, w) = frame.shape[:2]
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        (dx0, y0, dx1, y1) = _BB_SWITCH_BOX
+        out = []
+        for i in range(_BB_CARD_SLOTS):
+            x = (_BB_CARD_SLOT_X0 + i * _BB_CARD_SLOT_STEP) * w
+            patch = hsv[int(y0 * h):int(y1 * h), max(0, int(x + dx0 * w)):min(w, int(x + dx1 * w))]
+            if patch.size == 0:
+                continue
+            white = float(((patch[:, :, 1] < 40) & (patch[:, :, 2] >= 210)).mean())
+            if white >= _BB_SWITCH_MIN_WHITE:
+                out.append(cls._bb_card_tap_point((int(x), 0), w, h))
+        return out
+
+    @staticmethod
+    def _bb_card_tap_point(card, w, h):
+        return (int(card[0] + _BB_CARD_TAP_DX * w), int(_BB_CARD_TAP_Y * h))
+
+    def _bb_drop_troops(self, frame, hull, cards, machine, label):
+        '''One dragon per zone outside ``hull`` (more cards than zones: shared round-robin),
+        each card selected explicitly then dropped; the machine goes with one of the dragons.
+        False when no zone could be placed.'''
+        zones = bb_edge.zone_points(frame, hull)
+        if not zones:
+            return False
+        drops = bb_edge.spread_over_zones(zones, len(cards))
+        started = time.time()
+        self._bb_tap_cards_onto(cards, drops)
+        if machine is not None:
+            (px, py) = random.choice(drops)
+            self.input.click(machine[0], machine[1], pause = _BB_CARD_SELECT_PAUSE, rand = False)
+            self.input.click(px, py, pause = _BB_DEPLOY_CLICK_PAUSE, rand = False)
+        logger.info('Builder Base (%s): %d dragon(s)%s over %d zone(s) in %.1fs', label, len(cards), ' + machine' if machine else '', len(zones), time.time() - started)
+        self._bb_redeploy_missed(frame, hull, cards, label)
+        return True
+
+    def _bb_tap_cards_onto(self, cards, drops):
+        for ((cx, cy), (px, py)) in zip(cards, drops):
+            self._check_stop()
+            self.input.click(cx, cy, pause = _BB_CARD_SELECT_PAUSE, rand = False)
+            self.input.click(px, py, pause = _BB_DEPLOY_CLICK_PAUSE, rand = False)
+
+    def _bb_redeploy_missed(self, frame, hull, cards, label):
+        '''Dragons the game did not take (card still showing its switch button) are dropped
+        again on fresh zones 2-3 tiles out, round after round, until all are on the field.
+        Survivors carried into stage 2 have no switch button and are not checked.'''
+        half_step = _BB_CARD_SLOT_STEP * frame.shape[1] / 2
+        for attempt in range(1, _BB_DEPLOY_RETRIES + 1):
+            if self.stop_event.wait(_BB_DEPLOY_CHECK_WAIT):
+                return None
+            shot = self.window.screenshot()
+            if shot is None:
+                return None
+            missed = [c for c in self._bb_undeployed_slots(shot) if any(abs(c[0] - d[0]) <= half_step for d in cards)]
+            if not missed:
+                if attempt > 1:
+                    logger.info('Builder Base (%s): every dragon placed after %d retry round(s)', label, attempt - 1)
+                return None
+            zones = bb_edge.zone_points(frame, hull, distance = _BB_DEPLOY_RETRY_DISTANCE) or bb_edge.zone_points(frame, hull)
+            if not zones:
+                break
+            logger.info('Builder Base (%s): %d dragon(s) still on the bar — retry %d/%d', label, len(missed), attempt, _BB_DEPLOY_RETRIES)
+            self._bb_tap_cards_onto(missed, bb_edge.spread_over_zones(zones, len(missed)))
+        shot = self.window.screenshot()
+        left = 0 if shot is None else len([c for c in self._bb_undeployed_slots(shot) if any(abs(c[0] - d[0]) <= half_step for d in cards)])
+        if left:
+            logger.warning('Builder Base (%s): %d dragon(s) still not placed after %d retries', label, left, _BB_DEPLOY_RETRIES)
+
+    def _bb_activate_abilities(self, cards, machine):
+        '''After a random 10-25 s cooldown, click every deployed card (and the machine) together.'''
+        targets = list(cards) + ([machine] if machine is not None else [])
+        if not targets:
+            return None
+        delay = random.uniform(*_BB_ABILITY_DELAY)
+        if self.stop_event.wait(delay):
+            return None
+        for (x, y) in targets:
+            self._check_stop()
+            self.input.click(x, y, pause = 0.08, rand = False)
+        logger.info('Builder Base: abilities activated on %d card(s) after %.0fs', len(targets), delay)
+
     def _deploy_bb_baby_dragons(self, frame):
-        '''Find all Baby Dragon icons, deploy on diamond edges, wait, then re-click saved icons.'''
+        '''Baby Dragon edge deploy: zoom out, read the red border, one dragon per zone 2-8 tiles
+        outside it (machine with one of them), then abilities after 10-25 s. Falls back to the
+        diamond deploy when the border does not show.'''
+        self._bb_zoom_out(frame)
+        (shot, hull) = self._bb_read_border()
+        if shot is None:
+            return False
+        (cards, machine) = self._bb_dragon_cards(shot)
+        if not cards:
+            return False
+        if hull is None or not self._bb_drop_troops(shot, hull, cards, machine, 'stage 1'):
+            logger.warning('Builder Base: red border not found — using the diamond deploy')
+            return self._deploy_bb_baby_dragons_diamond(shot)
+        if self._loot_prioritise != 'elixir':
+            self._bb_activate_abilities(cards, machine)
+        return True
+
+    def _deploy_bb_baby_dragons_diamond(self, frame):
+        '''Fallback: find all Baby Dragon icons, deploy on diamond edges, wait, then re-click saved icons.'''
         strategy = AttackStrategy(self.input, self.vision, self.config, self.stop_event)
         roi = VisionService.bottom_half_region(frame)
         centers = VisionService.find_all_template_centers(frame, 'babydragon.png', region = roi, max_matches = 12, suppress_pad_frac = _BB_TEMPLATE_SUPPRESS_PAD)
@@ -1725,6 +2092,138 @@ deselect, which would eat the upcoming Attack click.'''
         self._bb_dismiss_okay_and_return_home()
 
     
+    @staticmethod
+    def _bb_overall_damage_percent(frame):
+        '''The "Overall Damage" percent shown bottom right during a Builder Base battle, or
+        None when it does not read (white digits on the dark panel, Tesseract digits only).'''
+        import cv2
+        import numpy as np
+        import pytesseract
+        (h, w) = frame.shape[:2]
+        (x0, y0, x1, y1) = _BB_DAMAGE_PERCENT_ROI
+        crop = frame[int(y0 * h):int(y1 * h), int(x0 * w):int(x1 * w)]
+        if crop.size == 0:
+            return None
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        mask = ((hsv[:, :, 2] > 200) & (hsv[:, :, 1] < 70)).astype(np.uint8) * 255
+        mask = cv2.resize(255 - mask, None, fx = 2, fy = 2, interpolation = cv2.INTER_CUBIC)
+        mask = cv2.copyMakeBorder(mask, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value = 255)
+        try:
+            text = pytesseract.image_to_string(mask, config = '--psm 7 -c tessedit_char_whitelist=0123456789%')
+        except Exception as e:
+            logger.debug('Builder Base (trophy): damage OCR failed: %s', e)
+            return None
+        digits = ''.join(ch for ch in text if ch.isdigit())
+        if not digits or len(digits) > 3:
+            return None
+        value = int(digits)
+        return value if value <= 200 else None
+
+    @staticmethod
+    def _bb_ready_card_slots(frame):
+        '''Centres of the troop-bar cards that can still be deployed: coloured and lit.
+        Dead cards are grey, empty slots dark; both are skipped.'''
+        import cv2
+        (h, w) = frame.shape[:2]
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        half = max(6, int(w * 0.0156))
+        y = int(_BB_CARD_SLOT_Y * h)
+        ready = []
+        for i in range(_BB_CARD_SLOTS):
+            x = int((_BB_CARD_SLOT_X0 + i * _BB_CARD_SLOT_STEP) * w)
+            patch = hsv[max(0, y - half):min(h, y + half), max(0, x - half):min(w, x + half)]
+            if patch.size == 0:
+                continue
+            (sat, val) = (float(patch[:, :, 1].mean()), float(patch[:, :, 2].mean()))
+            if sat >= _BB_CARD_READY_MIN_SAT and val >= _BB_CARD_READY_MIN_VAL:
+                ready.append((x, y))
+        return ready
+
+    def _bb_trophy_deploy_stage2(self, frame):
+        '''Stage 2 (the second village): zoom out, select a ready card and tap the village
+        centre (on the buildings) so the game shows the red border, read it, then spread every
+        ready dragon (survivors + fresh cards) over the zones. Returns the cards deployed.'''
+        self._bb_zoom_out(frame)
+        shot = self.window.screenshot()
+        if shot is None:
+            return 0
+        self._update_config_size(shot)
+        (cards, machine) = self._bb_dragon_cards(shot)
+        if not cards:
+            return 0
+        centre = bb_edge.village_centre(shot)
+        self.input.click(cards[0][0], cards[0][1], pause = _BB_CARD_SELECT_PAUSE, rand = False)
+        self.input.click(centre[0], centre[1], pause = 0.1, rand = False)
+        (border_frame, hull) = self._bb_read_border()
+        if hull is None:
+            logger.warning('Builder Base (trophy): stage-2 red border not shown — using a ring around the village centre')
+            hull = bb_edge.synthetic_hull(centre, shot)
+        # The tap could have dropped a dragon on open ground: re-read which cards are left.
+        after = self.window.screenshot()
+        if after is not None:
+            (cards, machine) = self._bb_dragon_cards(after)
+        if not cards:
+            return 1
+        self._bb_drop_troops(border_frame if border_frame is not None else shot, hull, cards, machine, 'trophy stage 2')
+        self._bb_activate_abilities(cards, machine)
+        return len(cards)
+
+    def _bb_trophy_return_home(self, frame):
+        '''Result screen after both stages: "Return Home" is there directly (no Okay).
+        True when it was clicked.'''
+        (rx, ry) = self.vision.find_template(frame, _BB_RETURN_HOME_TEMPLATE)
+        if not rx:
+            return False
+        self.input.click(rx, ry, pause = 0.5)
+        return True
+
+    def _bb_trophy_play_both_stages_and_return_home(self):
+        '''Trophy prioritise: never press End Battle or Surrender. Stage 1 plays out; when
+        "Overall Damage" passes 100% the battle moves to the second village — deploy the
+        ready cards there, then wait for the result screen and Return Home.'''
+        start = time.time()
+        stage2_at = None
+        hits = 0
+        deploys = 0
+        last_deploy = 0.0
+        while time.time() - start < _BB_TROPHY_BATTLE_TIMEOUT:
+            self._check_stop()
+            frame = self.window.screenshot()
+            if frame is None:
+                if self.stop_event.wait(0.5):
+                    return None
+                continue
+            self._update_config_size(frame)
+            if self._bb_trophy_return_home(frame):
+                logger.info('Builder Base (trophy): battle over after %ds (%d stage-2 deploy(s)) — Return Home', int(time.time() - start), deploys)
+                return None
+            if self.vision.find_template(frame, 'okay.png')[0]:
+                logger.info('Builder Base (trophy): battle over after %ds — Okay', int(time.time() - start))
+                self._bb_dismiss_okay_and_return_home(retry_battle_template = 'okay.png')
+                return None
+            now = time.time()
+            if stage2_at is None:
+                percent = self._bb_overall_damage_percent(frame)
+                hits = hits + 1 if percent is not None and percent >= 100 else 0
+                if hits >= 2:
+                    stage2_at = now
+                    logger.info('Builder Base (trophy): stage 1 done (%s%%) after %ds — moving to the second village', percent, int(now - start))
+            elif (deploys < _BB_TROPHY_MAX_STAGE2_DEPLOYS and now - stage2_at >= _BB_TROPHY_STAGE2_SETTLE
+                  and now - last_deploy >= _BB_TROPHY_REDEPLOY_WAIT):
+                if self._bb_trophy_deploy_stage2(frame):
+                    deploys += 1
+                    last_deploy = time.time()
+                    continue
+            if self.stop_event.wait(1.0):
+                return None
+        logger.warning('Builder Base (trophy): no result screen after %ds — ending the battle', _BB_TROPHY_BATTLE_TIMEOUT)
+        (ex, ey) = self._wait_for_image('endbattle.png', timeout = 3, error = False)
+        if ex:
+            self.input.click(ex, ey, pause = 0.15)
+            self._bb_dismiss_okay_and_return_home()
+        else:
+            self._bb_surrender_and_return_home()
+
     def _bb_return_home_template_for_screen(self, width, height):
         '''Return (template name, scale_template) for Builder Base Return Home.'''
         (tw, th) = _BB_1080P_CAPTURE_SIZE
@@ -1782,6 +2281,25 @@ deselect, which would eat the upcoming Attack click.'''
         logger.warning('Builder Base: %s not found after %d %s retries', return_home_template, max_retries, retry_battle_template)
 
     
+    def _bb_recover_from_battle(self):
+        '''No Battle button: if a battle is running (run started mid-attack, a stolen
+        tap), close any troop/popup menu on top of it, surrender and return home.'''
+        frame = self.window.screenshot()
+        if frame is None:
+            return False
+        self._update_config_size(frame)
+        (rx, ry) = self.vision.find_template(frame, _BB_RETURN_HOME_TEMPLATE)
+        if rx:
+            logger.info('Builder Base: battle already over — clicking Return Home')
+            self.input.click(rx, ry, pause = 0.5)
+            return True
+        if not self.vision.find_template(frame, 'surrender.png')[0]:
+            return False
+        logger.info('Builder Base: a battle is running — surrendering to get back home')
+        self.input.click(pause = 0.3, *self.config.get_point('empty'))
+        self._bb_surrender_and_return_home()
+        return True
+
     def _bb_surrender_and_return_home(self):
         '''Elixir prioritise: surrender right after deploy, then Okay + Return Home.'''
         (sx, sy) = self._wait_for_image('surrender.png', timeout = 10, error = False)
@@ -2152,7 +2670,7 @@ Each iteration dismisses ``okay.png`` / ``exit.png`` if present, then village / 
                         return (None, None)
                     continue
                 top_roi = VisionService.top_half_region(frame)
-                (mx, my) = self.vision.find_template(frame, 'mbuilder.png', region = top_roi)
+                (mx, my) = self.vision.find_template(frame, 'mbuilder.png', region = VisionService.bottom_right_quadrant_region(frame))  # Oct 2026 UI: builder portraits bottom-right
                 if mx:
                     logger.info('Account loaded in Builder Base (mbuilder.png); leaving to Home Village')
                     cb = getattr(self, '_status_callback', None)
@@ -2182,7 +2700,7 @@ Each iteration dismisses ``okay.png`` / ``exit.png`` if present, then village / 
             return None
         self._update_config_size(frame)
         top_roi = VisionService.top_half_region(frame)
-        (mx, my) = self.vision.find_template(frame, 'mbuilder.png', region = top_roi)
+        (mx, my) = self.vision.find_template(frame, 'mbuilder.png', region = VisionService.bottom_right_quadrant_region(frame))  # Oct 2026 UI: builder portraits bottom-right
         if mx:
             return 'builder'
         (hx, hy) = self._find_home_village_builder(frame, top_roi)

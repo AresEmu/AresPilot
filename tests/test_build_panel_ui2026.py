@@ -5,9 +5,10 @@ import _testenv  # noqa: F401 — must precede the app imports (test log folder)
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import cv2
+import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 SCREENS = ROOT / 'screens'
@@ -377,12 +378,34 @@ class WallsOkayDialogTests(unittest.TestCase):
     def test_wrong_resource_is_cancelled(self):
         bot = self.bot(['wall_confirm_multi.png', 'wall_confirm_multi.png', 'home.png'])
         bot._wall_upgrade_confirmed = False
+        bot._read_hud_triplet_stable = Mock(return_value = (7000000, 9000000, 0))  # gold < 8M
         bot._confirm_wall_dialog('elixir')
         self.assertFalse(bot._wall_upgrade_confirmed)
         cancel = self.okay_cancel_points().cancel
         clicked = [c[0][:2] for c in bot.input.click.call_args_list]
         self.assertIn(cancel, clicked)
         self.assertNotIn(self.okay_cancel_points().okay, clicked)
+
+    def test_wrong_resource_confirmed_when_the_hud_pays_it(self):
+        # Live BB 30/10: gold-only wall level, the bar read the click as elixir.
+        bot = self.bot(['wall_confirm_multi.png', 'home.png'])
+        bot._wall_upgrade_confirmed = False
+        bot._record_wall_upgrade = Mock()
+        bot._read_hud_triplet_stable = Mock(return_value = (9000000, 100000, 0))
+        bot._confirm_wall_dialog('elixir')
+        self.assertTrue(bot._wall_upgrade_confirmed)
+        self.assertEqual(bot.input.click.call_args_list[0][0][:2], self.okay_cancel_points().okay)
+        self.assertEqual(bot._record_wall_upgrade.call_args[0][0], 'gold')
+
+    def test_wrong_resource_uses_the_hud_read_before_the_popup(self):
+        # The popup dims the HUD: the live read fails, the pre-click one decides.
+        bot = self.bot(['wall_confirm_multi.png', 'home.png'])
+        bot._wall_upgrade_confirmed = False
+        bot._record_wall_upgrade = Mock()
+        bot._wall_pending = {'hud_before': (9000000, 100000, 0)}
+        bot._read_hud_triplet_stable = Mock(return_value = None)
+        bot._confirm_wall_dialog('elixir')
+        self.assertTrue(bot._wall_upgrade_confirmed)
 
     def test_close_all_never_presses_okay(self):
         from app.core.build_panel import BuildPanel
@@ -488,6 +511,137 @@ class LootTrackerTests(unittest.TestCase):
         self.assertEqual(bot._loot_totals, (200000, 0, 0))
 
 
+class BuilderBaseWallTests(unittest.TestCase):
+
+    def bot(self, hud):
+        from app.config import Config
+        from app.core.bot import Bot
+        bot = Bot.__new__(Bot)
+        bot.config = Config()
+        bot.stop_event = Mock()
+        bot.stop_event.is_set.return_value = False
+        bot.window = Mock()
+        bot.window.screenshot.return_value = np.zeros((1440, 2560, 3), dtype = np.uint8)
+        bot._update_config_size = Mock()
+        bot.vision = Mock()
+        bot.vision.find_template.return_value = (141, 1384)  # Battle button: home screen
+        bot._upgrade_walls = Mock()
+        bot._deselect_wall_ui = Mock()
+        bot._read_hud_triplet_stable = Mock(return_value = hud)
+        bot._wall_costs = set()
+        bot._bb_wall_probed = False
+        self.hud = hud
+        return bot
+
+    def run_pass(self, bot, enabled = True):
+        with patch('app.core.bot.read_hud_triplet', return_value = self.hud):
+            bot._maybe_upgrade_bb_walls(enabled)
+
+    def test_disabled_never_opens_the_panel(self):
+        bot = self.bot((226133, 631942, 2459))
+        self.run_pass(bot, enabled = False)
+        bot._upgrade_walls.assert_not_called()
+
+    def test_first_pass_reads_the_prices_once(self):
+        bot = self.bot((226133, 631942, 2459))
+        self.run_pass(bot)
+        self.run_pass(bot)  # still no prices (no Wall row): do not reopen every attack
+        bot._upgrade_walls.assert_called_once()
+
+    def test_first_pass_waits_for_the_home_screen(self):
+        bot = self.bot((226133, 631942, 2459))
+        bot.vision.find_template.return_value = (None, None)  # mid-battle / popup
+        self.run_pass(bot)
+        bot._upgrade_walls.assert_not_called()
+        self.assertFalse(bot._bb_wall_probed)
+        bot.vision.find_template.return_value = (141, 1384)
+        self.run_pass(bot)
+        bot._upgrade_walls.assert_called_once()
+
+    def test_known_price_needs_two_walls_of_loot(self):
+        bot = self.bot((226133, 631942, 2459))
+        bot._bb_wall_probed = True
+        bot._wall_costs = {320000, 480000}
+        self.run_pass(bot)  # 631 942 elixir < 2 x 320 000
+        bot._upgrade_walls.assert_not_called()
+        self.hud = (226133, 700000, 2459)
+        self.run_pass(bot)
+        bot._upgrade_walls.assert_called_once()
+
+    def test_bb_threshold_is_separate_and_waits_for_the_amount(self):
+        bot = self.bot((226133, 900000, 2459))
+        bot._bb_wall_probed = True
+        bot._wall_costs = {320000}
+        bot._wall_upgrade_threshold = 1000000  # Home Village threshold: must be ignored here
+        bot._bb_wall_upgrade_threshold = 1500000
+        self.run_pass(bot)  # 900k < 1.5M
+        bot._upgrade_walls.assert_not_called()
+        self.hud = (226133, 1600000, 2459)
+        self.run_pass(bot)
+        bot._upgrade_walls.assert_called_once()
+
+    def test_more_rounds_while_the_loot_still_pays(self):
+        bot = self.bot((1800000, 1700000, 2000))
+        bot._bb_wall_probed = True
+        bot._wall_costs = {2000, 150000}
+
+        def confirm():
+            bot._wall_upgrade_confirmed = True
+        bot._upgrade_walls.side_effect = confirm
+        # after each batch: still rich, still rich, then only 3000 left (< 2 x 2000)
+        bot._read_hud_triplet_stable = Mock(side_effect = [(1700000, 1700000, 0), (1600000, 1700000, 0), (3000, 3000, 0)])
+        self.run_pass(bot)
+        self.assertEqual(bot._upgrade_walls.call_count, 3)
+
+    def test_rounds_are_capped(self):
+        bot = self.bot((9000000, 9000000, 2000))
+        bot._bb_wall_probed = True
+        bot._wall_costs = {2000}
+
+        def confirm():
+            bot._wall_upgrade_confirmed = True
+        bot._upgrade_walls.side_effect = confirm
+        self.run_pass(bot)
+        from app.core.bot import _BB_WALL_MAX_ROUNDS
+        self.assertEqual(bot._upgrade_walls.call_count, _BB_WALL_MAX_ROUNDS)
+
+    def test_gold_only_level_is_not_paid_with_elixir(self):
+        # Live BB 30/10: gold 52k, elixir 4.5M, walls at 150k (gold only) and 240k (both).
+        bot = self.bot((52278, 4500000, 2000))
+        bot._builder_base = True
+        bot._wall_costs = {150000, 240000}
+        bot._wall_cost_resource = {150000: 'gold', 240000: 'elixir'}
+        self.assertFalse(bot._wall_payable(150000, (52278, 4500000, 2000)))
+        self.assertTrue(bot._wall_payable(240000, (52278, 4500000, 2000)))
+        self.assertTrue(bot._can_pay_any_wall((52278, 4500000, 2000), 2))
+        bot._wall_cost_resource = {150000: 'gold', 240000: 'gold'}
+        self.assertFalse(bot._can_pay_any_wall((52278, 4500000, 2000), 2))
+
+    def test_bar_without_elixir_button_marks_the_level_gold_only(self):
+        from types import SimpleNamespace
+        bot = self.bot((0, 0, 0))
+        bot._wall_pick_cost = 150000
+        gold = SimpleNamespace(found = True, cost_roi_xywh = (1, 1, 1, 1), redness = 0.0)
+        miss = SimpleNamespace(found = False, cost_roi_xywh = None, redness = 0)
+        bot._note_wall_pay_options(SimpleNamespace(gold = gold, elixir = miss))
+        self.assertTrue(bot._wall_gold_only(150000))
+        self.assertTrue(bot._pay_slot_blocked(miss))
+        self.assertFalse(bot._pay_slot_blocked(gold))
+        bot._wall_pick_cost = 240000
+        bot._note_wall_pay_options(SimpleNamespace(gold = gold, elixir = gold))
+        self.assertFalse(bot._wall_gold_only(240000))
+
+    def test_bb_threshold_setting_is_normalised(self):
+        from app.utils.profile_settings_store import _bb_wall_threshold_from_json, _normalize_bb_wall_threshold_m
+        self.assertEqual(_normalize_bb_wall_threshold_m('1.3'), 1.3)
+        self.assertEqual(_normalize_bb_wall_threshold_m(-5), 0.0)
+        self.assertEqual(_normalize_bb_wall_threshold_m(999), 20.0)
+        self.assertEqual(_normalize_bb_wall_threshold_m('x'), 0.0)
+        # Files saved by the thousands version keep their value.
+        self.assertEqual(_bb_wall_threshold_from_json({'bb_wall_upgrade_threshold_k': 1300}), 1.3)
+        self.assertEqual(_bb_wall_threshold_from_json({'bb_wall_upgrade_threshold_m': 0.8, 'bb_wall_upgrade_threshold_k': 1300}), 0.8)
+
+
 class RunSummaryTests(unittest.TestCase):
 
     def bot(self):
@@ -498,6 +652,34 @@ class RunSummaryTests(unittest.TestCase):
         bot._reset_run_stats()
         bot._loot_totals = (14426918, 14128038, 0)
         return bot
+
+    def test_builder_base_run_has_its_own_summary(self):
+        bot = self.bot()
+        bot._builder_base = True
+        bot._bb_attacks_done = 7
+        summary = bot._build_run_summary()
+        self.assertIn('Builder Base', summary)
+        self.assertIn('Attacchi Builder Base: 7', summary)
+        self.assertIn('Muri migliorati: 0', summary)
+        self.assertNotIn('Risorse farmate', summary)
+        stats = bot._build_run_stats()
+        self.assertEqual((stats['village'], stats['attacks'], stats['walls']), ('builder', 7, 0))
+
+    def test_builder_base_summary_lists_its_walls(self):
+        bot = self.bot()
+        bot._builder_base = True
+        bot._walls_upgraded = [{'count': 2, 'from_level': 6, 'cost': 640000, 'resource': 'elixir', 'per_wall': 320000}]
+        summary = bot._build_run_summary()
+        self.assertIn('Muri migliorati: 2', summary)
+        self.assertIn('liv. 6 → 7', summary)
+        self.assertEqual(bot._build_run_stats()['walls_elixir'], 640000)
+
+    def test_home_run_summary_is_unchanged(self):
+        bot = self.bot()
+        bot._builder_base = False
+        bot._attacks_done = 3
+        self.assertIn('Attacchi: 3', bot._build_run_summary())
+        self.assertEqual(bot._build_run_stats()['village'], 'home')
 
     def test_wall_cost_comes_from_the_hud_drop(self):
         bot = self.bot()

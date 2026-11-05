@@ -14,7 +14,7 @@ def show_under_development(parent):
 
 
 def show_bb_prioritise_help(parent):
-    QMessageBox.information(parent, 'Prioritise loot', 'Choose what the bot optimises for after each attack:\n\n• Gold — waits until 2 stars, then ends the battle.\n• Both — waits until 1 star, then ends the battle.\n• Elixir — surrenders immediately after deploying troops.')
+    QMessageBox.information(parent, 'Prioritise loot', 'Choose what the bot optimises for after each attack:\n\n• Gold — waits until 2 stars, then ends the battle.\n• Both — waits until 1 star, then ends the battle.\n• Elixir — surrenders immediately after deploying troops.\n• Trophy — never ends the battle early: plays stage 1 to 100%, then attacks the second village (stage 2) with the troops left, and waits for the battle to finish.')
 
 
 class RankedAttackConfirmDialog(QDialog):

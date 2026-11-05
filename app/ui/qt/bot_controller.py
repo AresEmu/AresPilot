@@ -52,7 +52,7 @@ class BotController(QObject):
 
             try:
                 profile = load_profile_settings()
-                self._bot.start(method, minutes, star_bonus = star_bonus, status_callback = on_status, loot_callback = on_loot, state_callback = on_state, multi_run_players = multi_run_players, ranked_fill = ranked_fill, upgrade_walls = upgrade_walls, earthquake_method = profile.earthquake_method, builder_base = builder_base, loot_prioritise = loot_prioritise, wall_upgrade_threshold = profile.wall_upgrade_threshold_m * 1000000, auto_upgrade = auto_upgrade, reserve_builders = profile.reserve_builders, upgrade_order = profile.upgrade_order)
+                self._bot.start(method, minutes, star_bonus = star_bonus, status_callback = on_status, loot_callback = on_loot, state_callback = on_state, multi_run_players = multi_run_players, ranked_fill = ranked_fill, upgrade_walls = upgrade_walls, earthquake_method = profile.earthquake_method, builder_base = builder_base, loot_prioritise = loot_prioritise, wall_upgrade_threshold = profile.wall_upgrade_threshold_m * 1000000, bb_wall_upgrade_threshold = round(profile.bb_wall_upgrade_threshold_m * 1000000), auto_upgrade = auto_upgrade, reserve_builders = profile.reserve_builders, upgrade_order = profile.upgrade_order)
             except InterruptedError:
                 logger.info('Bot thread stopped by user')
             except Exception as exc:
