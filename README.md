@@ -14,13 +14,16 @@ Trophy mode, Baby Dragon edge deploy, ...).
 Credit for the original design and code goes to the BasePilot author. AresPilot is not an
 official BasePilot release and is not supported by them.
 
-> ⚠️ **Read the [Disclaimer](#disclaimer) before using it.** Automating Clash of Clans
-> violates Supercell's Terms of Service. This project exists for **educational purposes
-> only** and you use it **entirely at your own risk**.
+> ⚠️ **Personal educational project — not a cheating tool, not endorsed by the author for
+> real play.** AresPilot is a study in computer vision, OCR and desktop UI automation. The
+> author **does not condone cheating** or any violation of Supercell's Terms of Service, and
+> does not encourage anyone to use it on a real account. It is **not affiliated with,
+> endorsed by or connected to Supercell** in any way. Read the [Disclaimer](#disclaimer).
 
-Windows desktop app for **Clash of Clans on Google Play Games (PC)**. It plays the game
-the way a person does: screen capture, computer vision and clicks. No memory reading, no
-packet manipulation, no modified client.
+Technically, it is a Windows desktop app that works on **Clash of Clans on Google Play
+Games (PC)** through screen capture, image recognition and mouse clicks only. No memory
+reading, no packet manipulation, no modified client, and **no network access** of its own:
+everything it stores (settings, logs) stays on the local PC.
 
 ---
 
@@ -28,7 +31,7 @@ packet manipulation, no modified client.
 
 | Status | Meaning |
 |---|---|
-| ✅ Working | Implemented and tested in real runs on the new UI |
+| ✅ Working | Implemented and verified against the new UI |
 | 🧪 Not fully tested | Implemented, but only briefly or not yet tested live |
 | 🚧 Work in progress | Being rewritten for the new UI, not usable yet |
 | 📋 Planned | Not started yet, to be released |
@@ -70,7 +73,7 @@ packet manipulation, no modified client.
   "collapse" (e.g. 9,000,000 read as 6) triggers a re-read, and if it persists the previous
   value is held for one cycle instead of counting a fake loss or a fake gain. Real spends
   (walls, upgrades) are not counted as farmed loot.
-- **More human-like attacks.** Heroes are dropped at random points of the perimeter and
+- **Varied attack patterns.** Heroes are dropped at random points of the perimeter and
   hero abilities fire 0–10 s after each hero is deployed. Troop placement
   (Valkyrie, Super Minion, Sneaky Goblin) was reworked:
   - troops follow random waypoints inside a **3.5-tile band** along each side, joined by a
@@ -149,41 +152,6 @@ packet manipulation, no modified client.
 
 Not automated (as upstream): starting laboratory research and Pet House upgrades.
 
-## Measured performance
-
-Numbers from real runs on the October 2026 UI (16:9, Google Play Games, October 2026).
-They depend on your army, Town Hall level, league and PC, so treat them as a reference,
-not a promise.
-
-**Long run — Super Minion army, wall upgrades on (1 h 31 min):**
-
-| Metric | Result |
-|---|---|
-| Attacks | 133 (**~88 per hour**, one every ~41 s including wall rounds) |
-| Gold farmed | 80.9 M (**~53 M/h**) |
-| Elixir farmed | 85.7 M (**~56 M/h**) |
-| Walls upgraded | 82 (level 13 → 14, 164 M spent, **~54 walls/h**) |
-| Wall rounds | 10 rounds, ~21% of the run time |
-| Errors / loot-tracker anomalies | 0 / 0 |
-
-**Builder Base — Baby Dragon army, wall upgrades on (1 h 05 min):** 91 attacks
-(**~84 per hour**) and 59 walls upgraded.
-
-**Attack rate by army:**
-
-| Army | Walls off | Walls on |
-|---|---|---|
-| Super Minion | 101–107 attacks/h (~34–36 s per attack) | 85–88 attacks/h |
-| Valkyrie | — | 66–67 attacks/h (~54 s per attack) |
-
-**Timings:**
-
-- Super Minion attack cycle (search → deploy → return home): ~27–38 s.
-- Wall round (scan the Build panel list, batch, pay, confirm): ~1 min, most of it spent
-  scrolling the list to find the Wall row.
-- Template matching: ~4× faster per call than upstream thanks to coarse-to-fine matching
-  and the template cache.
-
 ## Safety rails
 
 Automation that spends resources has to be careful, so AresPilot:
@@ -199,10 +167,12 @@ Automation that spends resources has to be careful, so AresPilot:
 
 ## Download
 
-Grab the latest **`AresPilot.exe`** from the
-[Releases page](https://github.com/AresEmu/BasePilot-Ares/releases) — a single
-file, no install needed (Tesseract is bundled). Windows SmartScreen may warn about an
-unsigned exe: choose *More info → Run anyway*. Read the [Disclaimer](#disclaimer) first.
+Builds, when available, are on the
+[Releases page](https://github.com/AresEmu/BasePilot-Ares/releases) — a single file, no
+install needed (Tesseract is bundled). Windows SmartScreen may warn about an unsigned exe.
+They are provided for studying the code in action, **not as a tool to play the game**:
+read the [Disclaimer](#disclaimer) first. On its first start the app shows the same
+disclaimer and runs only after you accept it.
 What changed in each version: [CHANGELOG](CHANGELOG.md).
 
 ## Requirements
@@ -268,11 +238,27 @@ under the Apache 2.0 license.
 
 ## Disclaimer
 
-Automating Clash of Clans **violates Supercell's Terms of Service and can get your
-account banned.** AresPilot, like the original BasePilot, is published **for educational
-purposes only**: it is an exercise in computer vision, OCR and UI automation against an
-animated, adversarial target. Use it on an account you're willing to lose, or don't use
-it at all. **No warranty; you use it at your own risk and accept all consequences.**
+**Educational purpose only.** AresPilot is a personal project, made to learn and
+experiment with computer vision, OCR and desktop UI automation on an animated, complex
+target. It is shared as source code for that purpose only.
 
-Not affiliated with, endorsed by, or associated with Supercell. Clash of Clans is a
-trademark of Supercell Oy.
+**The author does not condone cheating.** Automating Clash of Clans violates Supercell's
+Terms of Service and can get an account permanently banned. The author does not approve
+of, encourage or support using AresPilot — or any other bot — to play the game, gain an
+advantage over other players, or break the Terms of Service, for any reason. If you choose
+to run it anyway, you do so on your own initiative, at your own risk, and you alone are
+responsible for the consequences. **No warranty of any kind** (see [LICENSE](LICENSE)).
+
+**No affiliation with Supercell.** AresPilot is not affiliated with, endorsed, sponsored or
+approved by, or in any way connected to Supercell Oy. Clash of Clans, its name, logos,
+characters and in-game graphics are trademarks and copyrighted material of Supercell Oy.
+The small image crops in `templates/` are screenshots of the game's interface, used only
+so the software can recognise what is on screen; all rights to them remain with Supercell.
+
+**No support for gameplay use.** The author does not provide help for using AresPilot on
+an account, and issues or requests about evading detection, bans or anti-cheat systems
+will not be answered or accepted.
+
+**Removal on request.** If Supercell or any rights holder has a concern about this
+repository, please open an issue or contact the author through GitHub and the content will
+be reviewed and removed where appropriate.

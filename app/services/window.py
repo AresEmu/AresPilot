@@ -16,6 +16,13 @@ WM_MOUSEWHEEL = 522
 WHEEL_DELTA = 120
 _CHILD_CLASS_PREFIX = 'CROSVM'
 
+
+def _redact_title(title):
+    '''Window title for the log without the account name Google Play Games appends
+    ("Clash of Clans - <account>" -> "Clash of Clans - ***"), so shared logs stay anonymous.'''
+    (head, sep, _account) = str(title).partition(' - ')
+    return f'{head}{sep}***' if sep else head
+
 @dataclass
 class WindowCandidate:
     '''A visible top-level window plus its resolved Google Play Games game surface (if any).'''
@@ -99,7 +106,7 @@ auto-detection (Google Play Games window with a ``CROSVM*`` child surface).
             logger.info(f'''Window found via {how} (HWND: {self.hwnd})''')
             return True
         if selection.is_set():
-            logger.warning(f'''Pinned game window not found (title={selection.title!r}, child={selection.child_class!r}); falling back to auto-detect.''')
+            logger.warning(f'''Pinned game window not found (title={_redact_title(selection.title)!r}, child={selection.child_class!r}); falling back to auto-detect.''')
             self.hwnd = self._auto_detect_child()
             if self.hwnd:
                 logger.info(f'''Window found via auto-detect fallback (HWND: {self.hwnd})''')

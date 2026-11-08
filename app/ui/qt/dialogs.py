@@ -9,6 +9,32 @@ def show_error(parent, title, message):
     QMessageBox.critical(parent, title, message)
 
 
+DISCLAIMER_VERSION = 1
+DISCLAIMER_TEXT = (
+    'AresPilot is a personal, educational project about computer vision and desktop UI '
+    'automation.\n\n'
+    "Automating Clash of Clans violates Supercell's Terms of Service and can get an account "
+    'permanently banned. The author does not condone cheating and does not approve of using '
+    'this software to play the game, for any reason.\n\n'
+    'AresPilot is not affiliated with, endorsed by or connected to Supercell. Clash of Clans '
+    'is a trademark of Supercell Oy.\n\n'
+    'If you continue, you do so on your own initiative and at your own risk, and you alone '
+    'are responsible for the consequences. The software comes with no warranty.')
+
+
+def accept_disclaimer(parent = None):
+    '''First-start disclaimer: True only when the user explicitly accepts it.'''
+    box = QMessageBox(parent)
+    box.setWindowTitle('Disclaimer')
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setText('Please read before continuing')
+    box.setInformativeText(DISCLAIMER_TEXT)
+    accept = box.addButton('I understand and accept', QMessageBox.ButtonRole.AcceptRole)
+    box.addButton('Exit', QMessageBox.ButtonRole.RejectRole)
+    box.exec()
+    return box.clickedButton() is accept
+
+
 def show_under_development(parent):
     QMessageBox.information(parent, 'Under development', 'This feature is under development.')
 

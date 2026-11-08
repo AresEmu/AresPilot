@@ -31,6 +31,11 @@ First release under the **AresPilot** name (based on
 ### Changed
 - The Players page shows "Work in progress" while the player list and multi-run are
   reworked.
+- Clearer disclaimer: AresPilot is a personal educational project, not affiliated with
+  Supercell, and the author does not condone cheating. The app shows it on the first start
+  and runs only after it is accepted.
+- The log no longer contains the account name from the game window title.
+- README: removed the farming statistics section.
 
 ## 1.0.1 — BasePilot fork
 
