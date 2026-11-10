@@ -168,7 +168,7 @@ Automation that spends resources has to be careful, so AresPilot:
 ## Download
 
 Builds, when available, are on the
-[Releases page](https://github.com/AresEmu/BasePilot-Ares/releases) — a single file, no
+[Releases page](https://github.com/AresEmu/AresPilot/releases) — a single file, no
 install needed (Tesseract is bundled). Windows SmartScreen may warn about an unsigned exe.
 They are provided for studying the code in action, **not as a tool to play the game**:
 read the [Disclaimer](#disclaimer) first. On its first start the app shows the same
