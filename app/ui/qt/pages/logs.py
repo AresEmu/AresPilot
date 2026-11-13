@@ -39,9 +39,19 @@ class LogsPage(QWidget):
         layout.addWidget(self._log_view, stretch = 1)
 
     
+    # On show only the end of the file is loaded: the view keeps 5000 lines anyway, and
+    # re-reading a multi-MB log froze the UI (and appended it all again on every show).
+    _SHOW_TAIL_BYTES = 512 * 1024
+
     def showEvent(self, event):
         super().showEvent(event)
-        self._pos = 0
+        self._log_view.clear()
+        try:
+            size = get_autoloot_log_path().stat().st_size
+        except OSError:
+            size = 0
+        self._pos = max(0, size - self._SHOW_TAIL_BYTES)
+        self._skip_partial_line = self._pos > 0
         self._tail_log()
         self._tail_timer.start()
 
@@ -58,10 +68,18 @@ class LogsPage(QWidget):
             path.parent.mkdir(parents = True, exist_ok = True)
             if not path.is_file():
                 path.touch()
+            if path.stat().st_size < self._pos:
+                self._pos = 0  # the log rotated: follow the new file from its start
             with path.open('rb') as fh:
                 fh.seek(self._pos)
                 chunk = fh.read()
-                self._pos = fh.tell()
+            # Only whole lines: a read in the middle of a write could split a UTF-8 character.
+            cut = chunk.rfind(b'\n') + 1
+            chunk = chunk[:cut]
+            self._pos += cut
+            if chunk and getattr(self, '_skip_partial_line', False):
+                self._skip_partial_line = False
+                chunk = chunk[chunk.find(b'\n') + 1:]
             if chunk:
                 text = chunk.decode('utf-8', errors = 'replace')
                 self._log_view.moveCursor(QTextCursor.MoveOperation.End)

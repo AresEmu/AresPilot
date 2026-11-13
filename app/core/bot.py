@@ -1711,6 +1711,7 @@ deselect, which would eat the upcoming Attack click.'''
                 cb(msg)
             return None
         # duration_seconds == 0 → unlimited ("run until maxed"): only Stop ends the run.
+        no_dragon_failures = 0
         while duration_seconds <= 0 or time.time() - start_time < duration_seconds:
             self._check_stop()
             self._bb_dismiss_star_bonus()
@@ -1735,14 +1736,28 @@ deselect, which would eat the upcoming Attack click.'''
                 logger.warning(msg)
                 if cb:
                     cb(msg)
+                no_dragon_failures += 1
+                if self._bb_handle_no_dragon(no_dragon_failures, duration_seconds):
+                    return None
+                if no_dragon_failures >= _TROOP_FAILURE_LIMIT:
+                    no_dragon_failures = 0  # run until maxed backed off: count again
                 continue
             frame = self.window.screenshot()
             if frame is None:
+                # No capture (window lost / minimised): pause instead of spinning.
+                if self.stop_event.wait(0.5):
+                    return None
                 continue
             self._update_config_size(frame)
             if not self._deploy_bb_baby_dragons(frame):
                 logger.warning('Builder Base: no Baby Dragon card on the bar / deploy failed')
+                no_dragon_failures += 1
+                if self._bb_handle_no_dragon(no_dragon_failures, duration_seconds):
+                    return None
+                if no_dragon_failures >= _TROOP_FAILURE_LIMIT:
+                    no_dragon_failures = 0  # run until maxed backed off: count again
                 continue
+            no_dragon_failures = 0
             self._bb_attacks_done = getattr(self, '_bb_attacks_done', 0) + 1
             if self._loot_prioritise == 'elixir':
                 self._bb_surrender_and_return_home()
@@ -1761,6 +1776,28 @@ deselect, which would eat the upcoming Attack click.'''
         return None
 
     
+    def _bb_handle_no_dragon(self, failures, duration_seconds):
+        '''A battle opened without a usable Baby Dragon: leave it now (End Battle /
+        Surrender) instead of letting the next loop wait for a Battle button that is not
+        there (live: 3.5 minutes stuck). True = stop the run. After _TROOP_FAILURE_LIMIT
+        in a row the army has no dragons: a timed run stops, run-until-maxed backs off
+        like the Home Village does.'''
+        self._bb_recover_from_battle()
+        if failures < _TROOP_FAILURE_LIMIT:
+            return False
+        cb = getattr(self, '_status_callback', None)
+        if duration_seconds > 0:
+            msg = f'''Builder Base: no Baby Dragon {failures} times in a row — stopping. Check the Builder Base army.'''
+            logger.warning(msg)
+            if cb:
+                cb(msg)
+            return True
+        msg = f'''Builder Base: no Baby Dragon {failures} times in a row — backing off {_IDLE_RECHECK_SECONDS // 60}m, then retrying (run until maxed).'''
+        logger.warning(msg)
+        if cb:
+            cb(msg)
+        return self.stop_event.wait(_IDLE_RECHECK_SECONDS)
+
     def _bb_pan_down_left_from_center(self):
         '''Pan BB view down-left from screen center (~500px) to reveal the boat / elixir cart.'''
         self._check_stop()
@@ -1908,12 +1945,12 @@ Okay button. Returns True when the popup was found and closed.'''
         '''Tap points of the cards whose troop is not on the field yet (switch button shown).'''
         import cv2
         (h, w) = frame.shape[:2]
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         (dx0, y0, dx1, y1) = _BB_SWITCH_BOX
+        hsv = cv2.cvtColor(frame[int(y0 * h):int(y1 * h)], cv2.COLOR_BGR2HSV)  # the switch-button strip only
         out = []
         for i in range(_BB_CARD_SLOTS):
             x = (_BB_CARD_SLOT_X0 + i * _BB_CARD_SLOT_STEP) * w
-            patch = hsv[int(y0 * h):int(y1 * h), max(0, int(x + dx0 * w)):min(w, int(x + dx1 * w))]
+            patch = hsv[:, max(0, int(x + dx0 * w)):min(w, int(x + dx1 * w))]
             if patch.size == 0:
                 continue
             white = float(((patch[:, :, 1] < 40) & (patch[:, :, 2] >= 210)).mean())
@@ -1970,6 +2007,8 @@ Okay button. Returns True when the popup was found and closed.'''
                 break
             logger.info('Builder Base (%s): %d dragon(s) still on the bar — retry %d/%d', label, len(missed), attempt, _BB_DEPLOY_RETRIES)
             self._bb_tap_cards_onto(missed, bb_edge.spread_over_zones(zones, len(missed)))
+        if self.stop_event.wait(_BB_DEPLOY_CHECK_WAIT):
+            return None
         shot = self.window.screenshot()
         left = 0 if shot is None else len([c for c in self._bb_undeployed_slots(shot) if any(abs(c[0] - d[0]) <= half_step for d in cards)])
         if left:
@@ -2125,13 +2164,13 @@ Okay button. Returns True when the popup was found and closed.'''
         Dead cards are grey, empty slots dark; both are skipped.'''
         import cv2
         (h, w) = frame.shape[:2]
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         half = max(6, int(w * 0.0156))
         y = int(_BB_CARD_SLOT_Y * h)
+        hsv = cv2.cvtColor(frame[max(0, y - half):min(h, y + half)], cv2.COLOR_BGR2HSV)  # the card row only
         ready = []
         for i in range(_BB_CARD_SLOTS):
             x = int((_BB_CARD_SLOT_X0 + i * _BB_CARD_SLOT_STEP) * w)
-            patch = hsv[max(0, y - half):min(h, y + half), max(0, x - half):min(w, x + half)]
+            patch = hsv[:, max(0, x - half):min(w, x + half)]
             if patch.size == 0:
                 continue
             (sat, val) = (float(patch[:, :, 1].mean()), float(patch[:, :, 2].mean()))
@@ -2241,6 +2280,9 @@ Okay button. Returns True when the popup was found and closed.'''
             self._check_stop()
             frame = self.window.screenshot()
             if frame is None:
+                # No capture (window lost / minimised): pause instead of spinning.
+                if self.stop_event.wait(0.5):
+                    return (None, None, template_name)
                 continue
             self._update_config_size(frame)
             (h, w) = frame.shape[:2]
@@ -2293,22 +2335,36 @@ Okay button. Returns True when the popup was found and closed.'''
             logger.info('Builder Base: battle already over — clicking Return Home')
             self.input.click(rx, ry, pause = 0.5)
             return True
-        if not self.vision.find_template(frame, 'surrender.png')[0]:
+        # Before any troop is down the battle shows End Battle, not Surrender (live: the
+        # recovery looked for Surrender only and the bot sat 3.5 minutes in a battle).
+        if self.vision.find_template(frame, 'surrender.png')[0]:
+            button = 'surrender.png'
+        elif self.vision.find_template(frame, 'endbattle.png')[0]:
+            button = 'endbattle.png'
+        else:
             return False
-        logger.info('Builder Base: a battle is running — surrendering to get back home')
-        self.input.click(pause = 0.3, *self.config.get_point('empty'))
-        self._bb_surrender_and_return_home()
+        logger.info('Builder Base: a battle is running — leaving it (%s) to get back home', button)
+        if button == 'surrender.png':
+            # Nothing is deployed with End Battle up: an empty-ground tap there could drop
+            # the selected card, so it is only used to close menus once troops are down.
+            self.input.click(pause = 0.3, *self.config.get_point('empty'))
+        self._bb_surrender_and_return_home(button)
         return True
 
-    def _bb_surrender_and_return_home(self):
-        '''Elixir prioritise: surrender right after deploy, then Okay + Return Home.'''
-        (sx, sy) = self._wait_for_image('surrender.png', timeout = 10, error = False)
-        if sx:
-            self.input.click(sx, sy, pause = 0.15)
-        else:
-            logger.warning('Builder Base (elixir): surrender.png not found')
+    def _bb_surrender_and_return_home(self, button = 'surrender.png'):
+        '''Elixir prioritise: surrender right after deploy, then Okay + Return Home. Also
+        leaves a battle with nothing deployed, where the button is End Battle (``button``
+        is the one expected first; the other is tried briefly after it).'''
+        other = 'endbattle.png' if button == 'surrender.png' else 'surrender.png'
+        for (template, timeout) in ((button, 10), (other, 2)):
+            (sx, sy) = self._wait_for_image(template, timeout = timeout, error = False)
+            if sx:
+                break
+        if not sx:
+            logger.warning('Builder Base: surrender.png / endbattle.png not found')
             return None
-        self._bb_dismiss_okay_and_return_home(retry_battle_template = 'surrender.png')
+        self.input.click(sx, sy, pause = 0.15)
+        self._bb_dismiss_okay_and_return_home(retry_battle_template = template)
 
     
     def _find_match_and_attack(self, method_id, ranked_fill = False):
@@ -2987,6 +3043,9 @@ OCR is limited to the right half of the window unless ``region`` is passed expli
             self._check_stop()
             frame = self.window.screenshot()
             if frame is None:
+                # No capture (window lost / minimised): pause instead of spinning.
+                if self.stop_event.wait(0.5):
+                    return (None, None)
                 continue
             self._update_config_size(frame)
             if self._battle_rewards.handle(frame):
@@ -3016,6 +3075,9 @@ OCR is limited to the right half of the window unless ``region`` is passed expli
             self._check_stop()
             frame = self.window.screenshot()
             if frame is None:
+                # No capture (window lost / minimised): pause instead of spinning.
+                if self.stop_event.wait(0.5):
+                    return (None, None)
                 continue
             self._update_config_size(frame)
             if self._battle_rewards.handle(frame):

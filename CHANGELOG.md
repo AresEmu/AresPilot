@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Log file.** Every module had its own rotating handler on `arespilot.log`; at 5 MB the
+  rotation failed on Windows (file in use) and from then on log lines were lost. All
+  modules now share one handler.
+- **Logs page.** Opening it again appended the whole file a second time and could freeze
+  the window on a big log; it now loads only the end of the file, shows complete lines and
+  follows the log after a rotation.
+- **Builder Base without Baby Dragons.** A battle that opened with no dragon on the bar
+  was left running, and the recovery looked for Surrender only (the button is End Battle
+  before any troop is down): the bot waited minutes for the Battle button. The battle is
+  now ended at once, and after 4 such battles in a row a timed run stops (run until maxed
+  waits 5 minutes and tries again).
+- **Deploy check.** The check after the last re-drop round ran before the game had time to
+  take the dragons, so it could warn about dragons that were in fact placed.
+- **Lost game window.** A window handle that died (game or Google Play Games restarted) is
+  searched again instead of failing every capture; waits no longer spin when there is no
+  capture.
+- Closing the app during a run waits up to 3 s for the bot to stop, so the run summary is
+  still written.
+
+### Faster
+- Screenshots: the capture is converted in one step (about 14 ms less per frame at
+  2560×1440, same image).
+- Builder Base troop-bar reads look at the card row only, not at the whole frame.
+
 ## 1.1.0 — AresPilot
 
 First release under the **AresPilot** name (based on

@@ -158,6 +158,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         if self._controller.is_running():
             self._controller.stop()
+            self._controller.wait_stopped(3.0)
         if not self._taskbar is None:
             self._taskbar.teardown()
         self._settings.setValue('geometry', self.saveGeometry())

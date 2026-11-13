@@ -74,5 +74,13 @@ class BotController(QObject):
         self.statusChanged.emit('Stopping...', False)
 
 
+    def wait_stopped(self, timeout):
+        '''Block up to ``timeout`` s for the bot thread to finish (app close: lets the run
+        release the mouse and write its summary before the daemon thread is killed).'''
+        thread = self._bot_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout)
+
+
     def on_bot_finished(self):
         self.runningChanged.emit(False)

@@ -3,7 +3,7 @@ from ctypes import wintypes
 from dataclasses import dataclass
 import numpy as np
 import cv2
-from PIL import Image
+import time
 from typing import List, Optional, Tuple
 from app.utils.logger import setup_logger
 from app.utils.window_settings_store import WindowSelection, load_window_selection
@@ -72,6 +72,21 @@ class DescendantInfo:
 
 
 
+class _BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [
+        ('biSize', wintypes.DWORD),
+        ('biWidth', ctypes.c_long),
+        ('biHeight', ctypes.c_long),
+        ('biPlanes', wintypes.WORD),
+        ('biBitCount', wintypes.WORD),
+        ('biCompression', wintypes.DWORD),
+        ('biSizeImage', wintypes.DWORD),
+        ('biXPelsPerMeter', ctypes.c_long),
+        ('biYPelsPerMeter', ctypes.c_long),
+        ('biClrUsed', wintypes.DWORD),
+        ('biClrImportant', wintypes.DWORD)]
+
+
 class WindowService:
     '''Handles window finding and screenshot capture using Windows API.'''
     _TOP_LEVEL_CLASS_PREFIX = 'HwndWrapper'
@@ -82,6 +97,7 @@ class WindowService:
         self.hwnd = 0
         self.user32 = ctypes.windll.user32
         self.gdi32 = ctypes.windll.gdi32
+        self._last_find_attempt = 0.0
         
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(2)
@@ -283,7 +299,7 @@ share the title substring, so no outer-class gate is needed.
         '''
 Outer window size in pixels (``GetWindowRect``), same basis as :meth:`screenshot`.
 '''
-        if not self.hwnd and not self.find_window():
+        if not self._ensure_hwnd():
             return None
         
         try:
@@ -299,64 +315,69 @@ Outer window size in pixels (``GetWindowRect``), same basis as :meth:`screenshot
 
 
     
+    # A lost window is searched again at most this often (a failed search logs two warnings).
+    _REFIND_INTERVAL_SECONDS = 2.0
+
+    def _ensure_hwnd(self):
+        '''True when ``self.hwnd`` is a live window. A handle that died (game or Google Play
+        Games restarted) is dropped and searched again, instead of failing every capture
+        for the rest of the run.'''
+        if self.hwnd and not self.user32.IsWindow(self.hwnd):
+            logger.warning('Game window handle %s is no longer valid — searching the window again', self.hwnd)
+            self.hwnd = 0
+        if self.hwnd:
+            return True
+        now = time.monotonic()
+        if now - self._last_find_attempt < self._REFIND_INTERVAL_SECONDS:
+            return False
+        self._last_find_attempt = now
+        return bool(self.find_window())
+
     def screenshot(self):
         '''Captures a screenshot of the window.'''
-        if not self.hwnd and not self.find_window():
+        if not self._ensure_hwnd():
             return None
-        
+        hwnd = self.hwnd
+        (hwndDC, mfcDC, hbitmap, old_obj) = (0, 0, 0, 0)
         try:
             rect = wintypes.RECT()
-            self.user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
+            self.user32.GetWindowRect(hwnd, ctypes.byref(rect))
             width = rect.right - rect.left
             height = rect.bottom - rect.top
             if width <= 0 or height <= 0:
                 return None
-            hwndDC = self.user32.GetWindowDC(self.hwnd)
+            hwndDC = self.user32.GetWindowDC(hwnd)
             mfcDC = self.gdi32.CreateCompatibleDC(hwndDC)
             hbitmap = self.gdi32.CreateCompatibleBitmap(hwndDC, width, height)
-            self.gdi32.SelectObject(mfcDC, hbitmap)
+            old_obj = self.gdi32.SelectObject(mfcDC, hbitmap)
             PW_RENDERFULLCONTENT = 2
-            self.user32.PrintWindow(self.hwnd, mfcDC, PW_RENDERFULLCONTENT)
-            
-            class BITMAPINFOHEADER(ctypes.Structure):
-                _fields_ = [
-                    ('biSize', wintypes.DWORD),
-                    ('biWidth', ctypes.c_long),
-                    ('biHeight', ctypes.c_long),
-                    ('biPlanes', wintypes.WORD),
-                    ('biBitCount', wintypes.WORD),
-                    ('biCompression', wintypes.DWORD),
-                    ('biSizeImage', wintypes.DWORD),
-                    ('biXPelsPerMeter', ctypes.c_long),
-                    ('biYPelsPerMeter', ctypes.c_long),
-                    ('biClrUsed', wintypes.DWORD),
-                    ('biClrImportant', wintypes.DWORD)]
-
-            bmi = BITMAPINFOHEADER()
-            bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            self.user32.PrintWindow(hwnd, mfcDC, PW_RENDERFULLCONTENT)
+            bmi = _BITMAPINFOHEADER()
+            bmi.biSize = ctypes.sizeof(_BITMAPINFOHEADER)
             bmi.biWidth = width
             bmi.biHeight = -height
             bmi.biPlanes = 1
             bmi.biBitCount = 32
             bmi.biCompression = 0
-            buf_size = width * height * 4
-            buffer = (ctypes.c_byte * buf_size)()  # [recovered: decompiler dropped the array-type parens; caused every capture to fail]
+            buffer = (ctypes.c_ubyte * (width * height * 4))()
             self.gdi32.GetDIBits(hwndDC, hbitmap, 0, height, ctypes.byref(buffer), ctypes.byref(bmi), 0)
-            img = Image.frombuffer('RGBA', (width, height), bytes(buffer), 'raw', 'BGRA', 0, 1)
-            frame = np.array(img)
-            if frame.shape[2] == 4:
-                frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
-            else:
-                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            self.gdi32.DeleteObject(hbitmap)
-            self.gdi32.DeleteDC(mfcDC)
-            self.user32.ReleaseDC(self.hwnd, hwndDC)
-            return frame
+            # The DIB is already BGRA: view it in place and drop alpha (one copy, ~1 ms;
+            # the old bytes() -> PIL -> np.array -> cvtColor chain took ~13 ms at 2560x1440).
+            bgra = np.frombuffer(buffer, dtype = np.uint8).reshape(height, width, 4)
+            return cv2.cvtColor(bgra, cv2.COLOR_BGRA2BGR)
         except Exception as e:
             logger.error(f'''Screenshot failed: {e}''')
             return None
-            e = None
-            del e
+        finally:
+            # GDI objects are released even when a call above raised.
+            if mfcDC and old_obj:
+                self.gdi32.SelectObject(mfcDC, old_obj)
+            if hbitmap:
+                self.gdi32.DeleteObject(hbitmap)
+            if mfcDC:
+                self.gdi32.DeleteDC(mfcDC)
+            if hwndDC:
+                self.user32.ReleaseDC(hwnd, hwndDC)
 
 
 

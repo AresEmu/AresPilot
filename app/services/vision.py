@@ -1032,7 +1032,7 @@ Write Tesseract ``image_to_tsv`` and a word-level bounding-box overlay (mono / O
                         texts = tess_data.get('text', [])
                         n = len(texts)
                         levels = tess_data.get('level')
-                        if levels or len(levels) < n:
+                        if not levels or len(levels) < n:
                             levels = [
                                 5] * n
                         for i in range(n):
