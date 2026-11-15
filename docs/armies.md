@@ -3,7 +3,7 @@
 What AresPilot actually does during a raid, for anyone tuning strategies or reading the code.
 
 For the recommended army and the setup that makes it work, see
-[Army setup](../README.md#army-setup) in the README.
+[Prepare your army](../README.md#6-prepare-your-army-in-the-game) in the README Setup.
 
 ## Valkyries, Sneaky Goblins, Super Minions
 

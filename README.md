@@ -175,55 +175,177 @@ read the [Disclaimer](#disclaimer) first. On its first start the app shows the s
 disclaimer and runs only after you accept it.
 What changed in each version: [CHANGELOG](CHANGELOG.md).
 
-## Requirements
+## Setup
 
-- Windows 10/11
-- Clash of Clans running in **Google Play Games on PC**, with the October 2026 UI
-- The game rendering at **16:9** (the only profile updated for the new UI)
+Follow the steps in order. Each one says what to do and how to check it worked.
 
-## Running from source
+### 1. What you need
 
-Python 3.11+ on Windows (tested with Python 3.13):
+- A **Windows 10 or 11** PC.
+- A **16:9 monitor** (1920×1080, 2560×1440, 3840×2160, ...). An ultrawide or 16:10 monitor
+  also works, with one extra step ([step 5](#5-ultrawide-or-1610-monitor-only)).
+  AresPilot is tested at **2560×1440**; other 16:9 sizes are scaled from it.
+- **Clash of Clans on Google Play Games for PC**, with the October 2026 UI.
+- **Python 3.11 or newer** (tested with 3.13) and **Tesseract OCR 5**: both are free, and
+  step 3 explains how to install them.
 
-```
-pip install -r requirements.txt
-python main.py
-```
+### 2. Prepare the game
 
-Part of the OCR (building names, wall bar title) still uses Tesseract 5. For development,
-AresPilot falls back to `C:\Program Files\Tesseract-OCR\tesseract.exe`, so a
-[UB-Mannheim build](https://github.com/UB-Mannheim/tesseract/wiki) is enough, or point
-`TESSERACT_CMD` at any `tesseract.exe` you prefer.
+1. Install [Google Play Games for PC](https://play.google.com/googleplaygames), sign in and
+   install Clash of Clans from it.
+2. **Set the game language to English**: in Clash of Clans open *Settings → Language →
+   English*. AresPilot recognises buttons by their English text (Attack, Find Now, Surrender,
+   Okay, ...) and reads English names in the Build panel. With any other language it finds
+   almost nothing.
+3. Google Play Games draws the game with the shape of your monitor, decided **when the game
+   starts**. On a 16:9 monitor there is nothing to do. On an ultrawide or 16:10 monitor, do
+   [step 5](#5-ultrawide-or-1610-monitor-only) before playing.
+4. While the bot runs, keep the game window open and **do not minimise it**: a minimised
+   window cannot be captured. AresPilot sends its clicks straight to the game window, so your
+   mouse pointer is not moved.
 
-To build the one-file exe, copy that Tesseract install (`tesseract.exe`, its DLLs and
-`tessdata/`) into `tesseract_bundle/` and run:
+### 3. Install Python and Tesseract
 
-```
-pip install pyinstaller
-pyinstaller AresPilot.spec
-```
+1. **Python:** download the installer from [python.org](https://www.python.org/downloads/windows/).
+   On the first installer screen, tick **"Add python.exe to PATH"**, then click *Install Now*.
+2. **Tesseract:** open *PowerShell* and run:
 
-Settings and logs live in `%LOCALAPPDATA%\AresPilot` (settings from an older `BasePilot`
-folder are copied over on the first start).
+   ```
+   winget install UB-Mannheim.TesseractOCR
+   ```
 
-### First run
+   Or use the installer from the [UB-Mannheim page](https://github.com/UB-Mannheim/tesseract/wiki).
+   Keep the default folder, `C:\Program Files\Tesseract-OCR`, where AresPilot looks for it.
+   If you install it somewhere else, set the `TESSERACT_CMD` environment variable to the
+   full path of `tesseract.exe`.
+3. **Check:** close and reopen PowerShell, then run `python --version`. It must print
+   `Python 3.11` or newer.
 
-1. Open the game, then press **Test** on the Settings page to confirm AresPilot can see
-   it. Use **Auto-detect** or pick the window manually if needed.
-2. On the Run page, choose your army, set **Auto upgrade → Dry run** for the first session
-   and press **Start**. Watch the Logs page to see what it would do.
-3. Happy with its choices? Switch to **Maxer** and enable **Upgrade walls** if you want.
+### 4. Download and start AresPilot
 
-### Army setup
+1. Download the code: on the [repository page](https://github.com/AresEmu/AresPilot) click
+   *Code → Download ZIP* and extract it (for example to `C:\AresPilot`), or with Git:
 
-**Home Village:** the same as upstream: be on the Home Village, use the default deploy
-bar layout, and keep your army at the top of Saved Recipes.
+   ```
+   git clone https://github.com/AresEmu/AresPilot.git
+   ```
 
-**Builder Base:** Baby Dragons in every camp, plus the Battle Machine or the Flying
-Machine. Pick *Builder Base* on the Run page, choose a *Prioritise* mode (the **?** button
-explains each one) and press Start.
+2. Open PowerShell **in that folder** (in File Explorer: open the folder, type `powershell`
+   in the address bar and press Enter) and install the dependencies, once:
 
-See [docs/armies.md](docs/armies.md) for deploy details.
+   ```
+   pip install -r requirements.txt
+   ```
+
+3. Start AresPilot:
+
+   ```
+   python main.py
+   ```
+
+4. On the first start AresPilot shows the disclaimer: read it and accept it, or the app
+   closes.
+
+From then on, starting AresPilot only needs step 3, from the same folder. Settings and logs
+are stored in `%LOCALAPPDATA%\AresPilot`.
+
+### 5. Ultrawide or 16:10 monitor only
+
+Skip this step on a 16:9 monitor.
+
+1. In AresPilot open **Settings** and click **Switch display to 16:9**. Your screen changes
+   resolution.
+2. **Fully close** Clash of Clans (close its Google Play Games window), then open it again.
+3. Click **Restore my display**. The screen goes back to normal, and the game, already
+   running, stays 16:9.
+4. **Check:** in the window list of Settings select the Clash of Clans window and press
+   **Test**. The result must show `(16:9)` and `Surface OK to use.`
+
+Repeat this step every time you restart the game.
+
+### 6. Prepare your army in the game
+
+**Home Village.** Choose one of the four strategies of the Run page and bring that army:
+
+| Strategy | Main troop | Extra setup |
+|---|---|---|
+| **Valkyries** | Valkyries | Save the army as a recipe whose first troop is the Valkyrie, and keep it at the top of *Saved Recipes*. If the army screen shows no Valkyries, the bot loads that recipe before attacking. |
+| **Sneaky Goblins** | Sneaky Goblins | — |
+| **Super Minions** | Super Minions | — |
+| **Edrags** | 12 Electro Dragons | — |
+
+With every strategy the bot also uses, when they are in the army:
+- **Heroes:** Barbarian King, Archer Queen, Grand Warden, Royal Champion, Minion Prince and
+  Dragon Duke, with their abilities;
+- **Siege machine:** Log Launcher or Siege Barracks;
+- **Super Dragon;**
+- **Earthquake spells.**
+
+Other troops and spells are not deployed. Keep the game's default deploy bar order (do not
+rearrange the slots). [docs/armies.md](docs/armies.md) explains how each army is dropped.
+
+**Builder Base.** Fill every camp with **Baby Dragons** and bring the **Battle Machine** or the
+**Flying Machine**. Other troops are not supported: after 4 battles in a row without Baby
+Dragons a timed run stops.
+
+### 7. Start a run
+
+Leave the game on the village screen. On the **Run** page of AresPilot:
+
+1. **Village:** *Home Village* or *Builder Base*. If the game is in the other village, the bot
+   takes the boat by itself.
+2. **Attack Strategy:** the army you prepared in step 6.
+3. **Schedule:**
+   - **Duration** in minutes; or
+   - **Run until maxed:** no time limit, it runs until you press Stop. With full storages and
+     nothing to upgrade it waits and checks again every 5 minutes; or
+   - **Star Bonus:** stops when the daily Star Bonus is claimed (at most 15 minutes).
+4. **Modes (Home Village):**
+   - **Auto upgrade:** *Off*, *Maxer* (cheapest affordable upgrade, never the Town Hall),
+     *Rusher* (Town Hall first) or *Dry run* (only writes in the log what it would upgrade).
+   - **Upgrade walls:** spends gold and elixir on walls. The threshold that triggers it is in
+     *Settings*, together with the builders kept free for walls.
+   - **Ranked attack fill:** uses your **ranked** attacks. Leave it off unless you want that.
+5. **Modes (Builder Base):** *Prioritise* Gold, Both, Elixir or Trophy (the **?** button
+   explains each one) and *Upgrade walls* (threshold in *Settings*).
+6. Press **Start** at the top of the page. **Stop** ends the run; a summary shows run time,
+   attacks, loot farmed and walls upgraded.
+
+The **Logs** page shows what the bot is doing while it runs.
+
+### Common problems
+
+- **"Clash of Clans window not found"**: open the game first. If it is open, go to
+  **Settings**, select the Clash of Clans window in the list, press **Test**, then **Use this
+  window**.
+- **Test does not show `(16:9)`**: the game was started with a different screen shape. Do
+  [step 5](#5-ultrawide-or-1610-monitor-only).
+- **Test says "Could not read the window size"**: the game window is minimised. Restore it.
+- **The log is full of `... .png not found`**: the game is not in English, not 16:9, or not
+  on the October 2026 UI (steps 2 and 5).
+- **The log says "Tesseract not configured"**: Tesseract is not installed in
+  `C:\Program Files\Tesseract-OCR` and `TESSERACT_CMD` is not set (step 3).
+- **"Troops not found 4 times in a row — stopping"**: the army in the game does not match
+  the strategy chosen on the Run page (step 6).
+- The log file is `%LOCALAPPDATA%\AresPilot\arespilot.log`. The **Open in Explorer** button
+  on the Logs page opens its folder.
+
+### Building the exe (optional)
+
+The exe is a single file that runs without Python or Tesseract installed.
+
+1. Copy **all the contents** of `C:\Program Files\Tesseract-OCR` into a `tesseract_bundle`
+   folder inside the AresPilot folder, so that `tesseract_bundle\tesseract.exe` and
+   `tesseract_bundle\tessdata\eng.traineddata` exist. The folder is not in the repository
+   (about 40 MB).
+2. In PowerShell, in the AresPilot folder:
+
+   ```
+   pip install pyinstaller
+   python -m PyInstaller --noconfirm AresPilot.spec
+   ```
+
+3. The exe is `dist\AresPilot.exe`. Close it before building again.
 
 ## License
 
