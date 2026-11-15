@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.1
 
 ### Fixed
 - **Log file.** Every module had its own rotating handler on `arespilot.log`; at 5 MB the
@@ -26,6 +26,12 @@
 - Screenshots: the capture is converted in one step (about 14 ms less per frame at
   2560×1440, same image).
 - Builder Base troop-bar reads look at the card row only, not at the whole frame.
+
+### Changed
+- README: new step-by-step **Setup** section (game in English, 16:9 and the display switch
+  for ultrawide monitors, Python and Tesseract install, army per strategy, Run page options,
+  common problems, exe build).
+- `pywin32` removed from `requirements.txt` (it was not used).
 
 ## 1.1.0 — AresPilot
 
