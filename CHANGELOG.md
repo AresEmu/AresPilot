@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Reward chests (November 2026 update).** The Claim Reward and Continue buttons changed
+  look, so the end-of-battle chest was no longer recognised and the bot waited on the
+  result screen. The new buttons are matched again; the bot claims the chest, taps it open
+  and presses Continue on the reward, whatever the chest or the reward is.
+
+### New
+- **Star Bonus chests.** The chest after 2 stars and the 5-star "Star Bonus Received!"
+  popup (Claim) are opened the same way: tap until the reward shows, then Continue. More
+  reward screens in a row are all continued.
+
 ## 1.1.1
 
 ### Fixed

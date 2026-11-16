@@ -35,6 +35,13 @@ _BB_STAR_BONUS_TEMPLATE = 'bstar.png'
 _BB_STAR_BONUS_POPUP_TEMPLATE = 'starbonus.png'
 _BB_STAR_BONUS_OKAY_DY = 0.552
 _BB_BATTLE_STAR_TEMPLATE = 'bbstar.png'
+# Reward chests (November 2026 update), see Bot._handle_chest_screens.
+_CHEST_END_BATTLE_CLAIM_TEMPLATE = 'chestclaim.png'  # "Claim Reward" on the battle-end screen
+_CHEST_CLAIM_TEMPLATES = (_CHEST_END_BATTLE_CLAIM_TEMPLATE, 'starbonusclaim.png')  # + 5-star "Star Bonus Received!" Claim
+_CHEST_SCREEN_TEMPLATES = ('chestroom.png', 'starbonuschest.png')  # unopened chest: battle chest room / Star Bonus kitchen
+_CHEST_CONTINUE_TEMPLATES = ('chestcontinue.png', 'starbonuscontinue.png')  # reward screen Continue (two button sizes)
+_CHEST_TAP_TIMEOUT = 60
+_CHEST_AFTER_CONTINUE_SECONDS = 2.5
 _BB_BATTLE_MACHINE_TEMPLATE = 'battlemachine.png'
 _BB_FLYING_MACHINE_TEMPLATE = 'flyingmachine.png'
 _BB_GOLD_PRIORITISE_MIN_STARS = 2
@@ -1584,6 +1591,8 @@ deselect, which would eat the upcoming Attack click.'''
                     return (None, None)
                 continue
             self._update_config_size(frame)
+            if self._handle_chest_screens(frame):
+                continue
             if self._dismiss_okay_or_exit_on_frame(frame):
                 if self.stop_event.wait(0.25):
                     return (None, None)
@@ -2491,7 +2500,7 @@ Okay button. Returns True when the popup was found and closed.'''
 
     
     def _return_home(self):
-        '''Dismiss Okay if present, then wait for ``returnhome.png`` (+ ``returnhome2.png`` on 16:10) or ``chestclaim.png`` (mutually exclusive).'''
+        '''Dismiss Okay if present, then wait for ``returnhome.png`` (+ ``returnhome2.png`` on 16:10) or a chest Claim Reward button (mutually exclusive).'''
         (ox, oy) = self._wait_for_image('okay.png', timeout = 10)
         if ox:
             self.input.click(ox, oy, pause = 0.1)
@@ -2500,17 +2509,17 @@ Okay button. Returns True when the popup was found and closed.'''
             self.input.click(hx, hy, pause = 0.1)
             return ox is not None
         if kind == 'chest' and hx:
-            logger.info('Post-battle UI: chestclaim.png (replacing return home); running chest flow')
+            logger.info('Post-battle UI: Claim Reward (replacing Return Home); opening the chest')
             self.input.click(hx, hy, pause = 0.2)
             if self.stop_event.wait(0.35):
                 return ox is not None
-            self._tap_empty_until_chest_continue()
+            self._open_chest_until_continue()
         return ox is not None
 
-    
+
     def _wait_for_return_home_or_chest_claim(self, timeout = 10):
         '''
-Poll one frame for ``returnhome.png`` (+ ``returnhome2.png`` on 16:10 only) then ``chestclaim.png`` (only one should match).
+Poll one frame for ``returnhome.png`` (+ ``returnhome2.png`` on 16:10 only) then the chest Claim Reward button (only one should match).
 Returns (``"return"`` | ``"chest"``, x, y) or (None, None, None) on timeout.
 '''
         start = time.time()
@@ -2532,19 +2541,62 @@ Returns (``"return"`` | ``"chest"``, x, y) or (None, None, None) on timeout.
                     break  # [recovered: decompiler dropped this break, letting the last template overwrite a match]
             if rx:
                 return ('return', rx, ry)
-            (cx, cy) = self.vision.find_template(frame, 'chestclaim.png')
+            (cx, cy) = self.vision.find_template(frame, _CHEST_END_BATTLE_CLAIM_TEMPLATE)
             if cx:
                 return ('chest', cx, cy)
             if self.stop_event.wait(0.5):
                 return (None, None, None)
-            if time.time() - start < timeout:
-                continue
         logger.warning('Timeout waiting for returnhome.png / returnhome2.png (16:10) or chestclaim.png')
         return (None, None, None)
 
-    
+    # ---- Reward chests (November 2026 update) ----
+    # End-of-battle chest (Claim Reward instead of Return Home, about twice a day) and the
+    # Star Bonus chests (one after 2 stars, one with the 5-star "Star Bonus Received!"
+    # popup). Same shape every time: [Claim] -> chest screen, tap until it opens -> reward
+    # screen(s) with Continue. Chests and rewards vary, so only the fixed parts are
+    # matched: the Claim / Continue buttons and each chest room's background.
+
+    @staticmethod
+    def _available_templates(names):
+        '''The templates of ``names`` present in the current aspect profile (16:10 lacks the new ones).'''
+        return [name for name in names if get_template_path(name).exists()]
+
+
+    def _find_first_template(self, frame, names):
+        '''(name, x, y) of the first of ``names`` visible in ``frame``, else (None, None, None).'''
+        for name in self._available_templates(names):
+            (x, y) = self.vision.find_template(frame, name)
+            if x:
+                return (name, x, y)
+        return (None, None, None)
+
+
+    def _handle_chest_screens(self, frame):
+        '''Run the chest flow if ``frame`` shows any of its screens. Returns True if it did.'''
+        (name, x, y) = self._find_first_template(frame, _CHEST_CONTINUE_TEMPLATES)
+        if name:
+            logger.info('Chest reward: %s visible - clicking Continue', name)
+            self.input.click(x, y, pause = 0.25)
+            self._finish_chest_rewards()
+            return True
+        (name, x, y) = self._find_first_template(frame, _CHEST_CLAIM_TEMPLATES)
+        if name:
+            logger.info('Chest: %s visible - claiming the chest', name)
+            self.input.click(x, y, pause = 0.2)
+            if self.stop_event.wait(0.35):
+                return True
+            self._open_chest_until_continue()
+            return True
+        (name, _, _) = self._find_first_template(frame, _CHEST_SCREEN_TEMPLATES)
+        if name:
+            logger.info('Chest: unopened chest screen (%s) - tapping it open', name)
+            self._open_chest_until_continue()
+            return True
+        return False
+
+
     def _random_point_chest_tap_through(self):
-        '''Random point near center-right of the capture for chest tap-through (±85 px from anchor).'''
+        '''Random point near center-right of the capture for chest tap-through (+-85 px from anchor).'''
         (w, h) = (self.config.width, self.config.height)  # [recovered: pycdc reversed STORE_FAST_STORE_FAST pairs]
         if w <= 1 or h <= 1:
             (w, h) = (self.config.ref_width, self.config.ref_height)
@@ -2553,34 +2605,60 @@ Returns (``"return"`` | ``"chest"``, x, y) or (None, None, None) on timeout.
         j = 85
         return (max(0, min(w - 1, cx + random.randint(-j, j))), max(0, min(h - 1, cy + random.randint(-j, j))))
 
-    
-    def _tap_empty_until_chest_continue(self):
-        '''After ``chestclaim`` was clicked: tap center-right (±85px) until ``chestcontinue.png``, then click it (home).'''
-        CHEST_TAP_TIMEOUT = 120
-        deadline = time.time() + CHEST_TAP_TIMEOUT
+
+    def _open_chest_until_continue(self):
+        '''On a chest screen (after its Claim): tap center-right (+-85 px, clear of the reward's
+        info button) until a Continue button shows, click it, then finish any further rewards.
+        Returns True once Continue was clicked.'''
+        deadline = time.time() + _CHEST_TAP_TIMEOUT
+        taps = 0
         while time.time() < deadline:
             self._check_stop()
+            frame = self.window.screenshot()
+            if frame is None:
+                if self.stop_event.wait(0.5):
+                    return False
+                continue
+            self._update_config_size(frame)
+            (name, x, y) = self._find_first_template(frame, _CHEST_CONTINUE_TEMPLATES)
+            if name:
+                logger.info('Chest reward: %s after %d tap(s) - clicking Continue', name, taps)
+                self.input.click(x, y, pause = 0.25)
+                self._finish_chest_rewards()
+                return True
             (nx, ny) = self._random_point_chest_tap_through()
             self.input.click_at(nx, ny, rand = False)
-            t0 = time.time()
-            if self.stop_event.wait(0.15):
+            taps += 1
+            if self.stop_event.wait(0.5):
+                return False
+        logger.warning('Chest: no Continue button within %ds of tapping; continuing bot loop', _CHEST_TAP_TIMEOUT)
+        return False
+
+
+    def _finish_chest_rewards(self):
+        '''After a Continue: a chest can hold more than one reward screen, and another chest
+        can follow (5-star Star Bonus). Handle those for a few seconds; never tap blindly here,
+        the village may already be back.'''
+        quiet_until = time.time() + _CHEST_AFTER_CONTINUE_SECONDS
+        while time.time() < quiet_until:
+            if self.stop_event.wait(0.5):
                 return None
-            frame2 = self.window.screenshot()
-            if not frame2 is None:
-                self._update_config_size(frame2)
-                (tx, ty) = self.vision.find_template(frame2, 'chestcontinue.png')
-                if tx:
-                    logger.info('Chest reward: chestcontinue.png found; clicking (expect home village)')
-                    self.input.click(tx, ty, pause = 0.25)
-                    return None
-            elapsed = time.time() - t0
-            to_wait = max(0.05, 0.5 - elapsed)
-            if self.stop_event.wait(to_wait):
+            frame = self.window.screenshot()
+            if frame is None:
+                continue
+            self._update_config_size(frame)
+            (name, x, y) = self._find_first_template(frame, _CHEST_CONTINUE_TEMPLATES)
+            if name:
+                logger.info('Chest reward: another %s - clicking Continue', name)
+                self.input.click(x, y, pause = 0.25)
+                quiet_until = time.time() + _CHEST_AFTER_CONTINUE_SECONDS
+                continue
+            if self._find_first_template(frame, _CHEST_CLAIM_TEMPLATES + _CHEST_SCREEN_TEMPLATES)[0]:
+                self._handle_chest_screens(frame)
                 return None
-        logger.warning(f'''chestcontinue.png not seen within {int(CHEST_TAP_TIMEOUT)}s after chest claim; continuing bot loop''')  # [recovered: decompiler misnested this inside the loop, ending the tap-through after one tap]
         return None
 
-    
+
     def _is_star_bonus_claimed(self):
         '''True if neither emptystar nor glowstar matches strongly (bonus claimed / not shown).'''
         frame = self.window.screenshot()
@@ -2616,6 +2694,8 @@ Returns (``"return"`` | ``"chest"``, x, y) or (None, None, None) on timeout.
                 continue
             self._update_config_size(frame)
             if self._battle_rewards.handle(frame):
+                continue
+            if self._handle_chest_screens(frame):
                 continue
             if self._dismiss_okay_or_exit_on_frame(frame):
                 if self.stop_event.wait(0.3):
