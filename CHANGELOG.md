@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
 ### Fixed
 - **Reward chests (November 2026 update).** The Claim Reward and Continue buttons changed
