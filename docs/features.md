@@ -83,11 +83,12 @@ Everything AresPilot does, and how far each part is. The short version is in the
   100%, then attacks the second village with the surviving dragons and the fresh cards,
   and waits for the battle to finish before Return Home.
 - **Baby Dragon edge deploy (Builder Base, both stages).** Full zoom-out, then the bot reads
-  the red "no deploy" border around the village and drops one dragon per zone in six zones
-  around it, a random **2–8 tiles** outside the border, all within ~3 s. Zones never land
-  off the playable floor, on the HUD, on the troop bar or on the buttons: a blocked zone
-  comes closer to the border or slides along it. The machine is dropped with one of the
-  dragons; all abilities fire together after a random 10–25 s. In the second village the
+  the red "no deploy" border around the village and drops each dragon on its own spot, a
+  random **2–8 tiles** outside the border, spread evenly around the village and at least
+  **5 tiles** from the others (never two on the same spot), all within ~3 s. Spots never
+  land off the playable floor, on the HUD, on the troop bar or on the buttons: when a big
+  village fills one side, the dragons share the open sides. The machine is dropped with one
+  of the dragons; all abilities fire together after a random 10–20 s. In the second village the
   bot first taps a building with a dragon selected to make the game show the border.
 - **Missed-drop retries.** Dragons the game did not take (their card still shows the troop
   switch button) are dropped again closer to the border, up to 5 rounds.

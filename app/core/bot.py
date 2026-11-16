@@ -22,7 +22,6 @@ _HOME_VILLAGE_BUILDER_TEMPLATES = ('builder.png', 'gbuilder.png')
 _WALL_OCR_RETRY_DRAG_BASELINE: dict[str, tuple[tuple[int, int], tuple[int, int]]] = {
     ASPECT_16_9: ((1300, 280), (1300, 830)),
     ASPECT_16_10: ((1300, 280), (1300, 980)) }
-_BB_BABY_DRAGON_RECLICK_WAIT = 10
 _BB_RETURN_HOME_TEMPLATE = 'breturnhome.png'
 _BB_RETURN_HOME_TEMPLATE_1080P = 'breturnhome1920.png'
 _BB_1080P_CAPTURE_SIZE = (1920, 1080)
@@ -84,12 +83,13 @@ _BB_BORDER_READ_GAP = 0.2
 _BB_CARD_SELECT_PAUSE = 0.22
 _BB_DEPLOY_CLICK_PAUSE = 0.12
 # Dragons still on the bar after the drop (switch button still there): dropped again, closer
-# to the border (2-3 tiles) on fresh zones, until placed or these rounds run out.
+# to the border (2-3 tiles), away from the drops already made, until placed or these rounds
+# run out.
 _BB_DEPLOY_RETRIES = 5
 _BB_DEPLOY_RETRY_DISTANCE = (2.0, 3.0)
 _BB_DEPLOY_CHECK_WAIT = 0.35
 # Abilities: every deployed card clicked together, once, after a random cooldown.
-_BB_ABILITY_DELAY = (10.0, 25.0)
+_BB_ABILITY_DELAY = (10.0, 20.0)
 _BB_RETURN_HOME_END_BATTLE_RETRIES = 5
 _STAR_BONUS_THRESHOLD = 0.75
 _TROOP_FAILURE_LIMIT = 4
@@ -1972,21 +1972,21 @@ Okay button. Returns True when the popup was found and closed.'''
         return (int(card[0] + _BB_CARD_TAP_DX * w), int(_BB_CARD_TAP_Y * h))
 
     def _bb_drop_troops(self, frame, hull, cards, machine, label):
-        '''One dragon per zone outside ``hull`` (more cards than zones: shared round-robin),
-        each card selected explicitly then dropped; the machine goes with one of the dragons.
-        False when no zone could be placed.'''
-        zones = bb_edge.zone_points(frame, hull)
-        if not zones:
+        '''Each dragon on its own spot outside ``hull``, spread evenly around the village and
+        at least a few tiles from the others (see bb_edge.drop_points); each card selected
+        explicitly then dropped; the machine goes with one of the dragons. False when no spot
+        is free.'''
+        drops = bb_edge.drop_points(frame, hull, len(cards))
+        if not drops:
             return False
-        drops = bb_edge.spread_over_zones(zones, len(cards))
         started = time.time()
         self._bb_tap_cards_onto(cards, drops)
         if machine is not None:
             (px, py) = random.choice(drops)
             self.input.click(machine[0], machine[1], pause = _BB_CARD_SELECT_PAUSE, rand = False)
             self.input.click(px, py, pause = _BB_DEPLOY_CLICK_PAUSE, rand = False)
-        logger.info('Builder Base (%s): %d dragon(s)%s over %d zone(s) in %.1fs', label, len(cards), ' + machine' if machine else '', len(zones), time.time() - started)
-        self._bb_redeploy_missed(frame, hull, cards, label)
+        logger.info('Builder Base (%s): %d dragon(s)%s on %d spot(s) %.1f+ tiles apart in %.1fs', label, len(cards), ' + machine' if machine else '', len(drops), bb_edge.min_separation_tiles(drops, frame.shape[1]) if len(drops) > 1 else 0.0, time.time() - started)
+        self._bb_redeploy_missed(frame, hull, cards, label, drops)
         return True
 
     def _bb_tap_cards_onto(self, cards, drops):
@@ -1995,10 +1995,12 @@ Okay button. Returns True when the popup was found and closed.'''
             self.input.click(cx, cy, pause = _BB_CARD_SELECT_PAUSE, rand = False)
             self.input.click(px, py, pause = _BB_DEPLOY_CLICK_PAUSE, rand = False)
 
-    def _bb_redeploy_missed(self, frame, hull, cards, label):
+    def _bb_redeploy_missed(self, frame, hull, cards, label, drops = ()):
         '''Dragons the game did not take (card still showing its switch button) are dropped
-        again on fresh zones 2-3 tiles out, round after round, until all are on the field.
-        Survivors carried into stage 2 have no switch button and are not checked.'''
+        again 2-3 tiles out, away from every spot used so far (``drops``), round after round,
+        until all are on the field. Survivors carried into stage 2 have no switch button and
+        are not checked.'''
+        used = list(drops)
         half_step = _BB_CARD_SLOT_STEP * frame.shape[1] / 2
         for attempt in range(1, _BB_DEPLOY_RETRIES + 1):
             if self.stop_event.wait(_BB_DEPLOY_CHECK_WAIT):
@@ -2011,11 +2013,13 @@ Okay button. Returns True when the popup was found and closed.'''
                 if attempt > 1:
                     logger.info('Builder Base (%s): every dragon placed after %d retry round(s)', label, attempt - 1)
                 return None
-            zones = bb_edge.zone_points(frame, hull, distance = _BB_DEPLOY_RETRY_DISTANCE) or bb_edge.zone_points(frame, hull)
-            if not zones:
+            retry = (bb_edge.drop_points(frame, hull, len(missed), distance = _BB_DEPLOY_RETRY_DISTANCE, avoid = used)
+                     or bb_edge.drop_points(frame, hull, len(missed), avoid = used))
+            if not retry:
                 break
             logger.info('Builder Base (%s): %d dragon(s) still on the bar — retry %d/%d', label, len(missed), attempt, _BB_DEPLOY_RETRIES)
-            self._bb_tap_cards_onto(missed, bb_edge.spread_over_zones(zones, len(missed)))
+            self._bb_tap_cards_onto(missed, retry)
+            used += retry
         if self.stop_event.wait(_BB_DEPLOY_CHECK_WAIT):
             return None
         shot = self.window.screenshot()
@@ -2024,7 +2028,7 @@ Okay button. Returns True when the popup was found and closed.'''
             logger.warning('Builder Base (%s): %d dragon(s) still not placed after %d retries', label, left, _BB_DEPLOY_RETRIES)
 
     def _bb_activate_abilities(self, cards, machine):
-        '''After a random 10-25 s cooldown, click every deployed card (and the machine) together.'''
+        '''After a random 10-20 s cooldown, click every deployed card (and the machine) together.'''
         targets = list(cards) + ([machine] if machine is not None else [])
         if not targets:
             return None
@@ -2037,9 +2041,9 @@ Okay button. Returns True when the popup was found and closed.'''
         logger.info('Builder Base: abilities activated on %d card(s) after %.0fs', len(targets), delay)
 
     def _deploy_bb_baby_dragons(self, frame):
-        '''Baby Dragon edge deploy: zoom out, read the red border, one dragon per zone 2-8 tiles
-        outside it (machine with one of them), then abilities after 10-25 s. Falls back to the
-        diamond deploy when the border does not show.'''
+        '''Baby Dragon edge deploy: zoom out, read the red border, each dragon on its own spot
+        2-8 tiles outside it, spread apart (machine with one of them), then abilities after
+        10-20 s. Falls back to the diamond deploy when the border does not show.'''
         self._bb_zoom_out(frame)
         (shot, hull) = self._bb_read_border()
         if shot is None:
@@ -2055,7 +2059,8 @@ Okay button. Returns True when the popup was found and closed.'''
         return True
 
     def _deploy_bb_baby_dragons_diamond(self, frame):
-        '''Fallback: find all Baby Dragon icons, deploy on diamond edges, wait, then re-click saved icons.'''
+        '''Fallback: find all Baby Dragon icons, deploy evenly on the diamond edges, wait a random
+        10-20 s, then re-click saved icons (abilities).'''
         strategy = AttackStrategy(self.input, self.vision, self.config, self.stop_event)
         roi = VisionService.bottom_half_region(frame)
         centers = VisionService.find_all_template_centers(frame, 'babydragon.png', region = roi, max_matches = 12, suppress_pad_frac = _BB_TEMPLATE_SUPPRESS_PAD)
@@ -2070,7 +2075,7 @@ Okay button. Returns True when the popup was found and closed.'''
             self.input.click(px, py, pause = _EDRAG_DELAY, rand = False)
         self._deploy_bb_battle_or_flying_machine(strategy)
         if self._loot_prioritise != 'elixir':
-            if self.stop_event.wait(_BB_BABY_DRAGON_RECLICK_WAIT):
+            if self.stop_event.wait(random.uniform(*_BB_ABILITY_DELAY)):
                 return True
             for x, y in centers:
                 self._check_stop()
@@ -2190,7 +2195,7 @@ Okay button. Returns True when the popup was found and closed.'''
     def _bb_trophy_deploy_stage2(self, frame):
         '''Stage 2 (the second village): zoom out, select a ready card and tap the village
         centre (on the buildings) so the game shows the red border, read it, then spread every
-        ready dragon (survivors + fresh cards) over the zones. Returns the cards deployed.'''
+        ready dragon (survivors + fresh cards) around it, apart. Returns the cards deployed.'''
         self._bb_zoom_out(frame)
         shot = self.window.screenshot()
         if shot is None:

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Builder Base: dragons stacked on each other** (every mode, both villages of Trophy).
+  When a side of the village had no room, its drop slid onto the next one, and with more
+  dragons than free zones two shared a spot: those dragons flew as one clump. Each dragon
+  now gets its own spot, spread evenly over the sides with room and at least 5 tiles from
+  the others (the gap shrinks only on a crowded floor, never to the same spot). Retried
+  drops keep away from the spots already used.
+
+### Changed
+- **Builder Base abilities** fire after a random 10–20 s (was 10–25 s), also in the
+  fallback diamond deploy (was a fixed 10 s).
+
 ## 1.2.0
 
 ### Fixed

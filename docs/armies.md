@@ -51,17 +51,20 @@ development). Per battle:
 2. **Read the border.** Red-dominant pixels → straight segments along the two isometric grid
    directions → convex hull. The Overall Damage panel is masked out (its stars are red too), and
    a hull smaller than a real border (fire, wooden walls) is rejected.
-3. **Six zones** around the village (left, upper-left, upper-right, right, lower-right,
-   lower-left), each a random **2–8 tiles** outside the border. A zone that would land off the
-   playable floor, on the HUD, the troop bar or the buttons first comes closer (never under 2
-   tiles), then slides along the border; it is skipped only when no spot is free.
-4. **Drop** one dragon per zone (more dragons than zones: round-robin), each card selected on the
-   dragon's head — never on the troop-switch button — then its zone, all within ~3 s. The Battle
-   Machine / Flying Machine goes with one of the dragons.
-5. **Retry missed drops.** A card that still shows its troop-switch button was not deployed:
-   it is dropped again 2–3 tiles out on fresh zones, up to 5 rounds.
-6. **Abilities**: every card clicked together after a random 10–25 s (not in *Elixir* mode,
-   which surrenders right away).
+3. **One spot per dragon**, each a random **2–8 tiles** outside the border, spread evenly
+   around the village from a random side. Only spots on the playable floor count (not on the
+   HUD, the troop bar or the buttons): when a big village fills the floor on one side, the
+   dragons are spread evenly over the open sides instead.
+4. **Never stacked.** Every dragon lands at least **5 tiles** from the others. On a crowded
+   floor that gap shrinks step by step; past that, each dragon takes the free spot farthest
+   from the others, so two dragons never share a spot.
+5. **Drop** each dragon on its spot, its card selected on the dragon's head — never on the
+   troop-switch button — all within ~3 s. The Battle Machine / Flying Machine goes with one
+   of the dragons.
+6. **Retry missed drops.** A card that still shows its troop-switch button was not deployed:
+   it is dropped again 2–3 tiles out, away from every spot already used, up to 5 rounds.
+7. **Abilities**: every card clicked together after a random **10–20 s** (not in *Elixir*
+   mode, which surrenders right away).
 
 If no border shows, the bot falls back to the older diamond deploy.
 

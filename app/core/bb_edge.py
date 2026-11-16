@@ -1,5 +1,5 @@
 '''Builder Base deploy geometry: the red "no deploy" border around the enemy village and the
-six drop zones just outside it (Baby Dragon strategy, both stages of a battle).
+the drop points just outside it, spread apart (Baby Dragon strategy, both stages of a battle).
 
 The border is a thin red line made of straight segments along the two isometric grid
 directions. It is found as red-dominant pixels (red minus max(green, blue)) → Hough
@@ -39,15 +39,19 @@ _SAFE_Y = (0.14, 0.81)
 # diamond that stays on the floor in both villages (measured; the cliffs, forest and water
 # around it take no troops). Up to 8 tiles out would otherwise reach them.
 _FIELD_CORNERS = ((0.14, 0.52), (0.52, 0.11), (0.80, 0.52), (0.50, 0.95))
-# Six zones around the village (screen angles, y down): left, upper-left, upper-right,
-# right, lower-right, lower-left — the pattern of placexample.png.
-ZONE_ANGLES = (180, 240, 300, 0, 60, 120)
-_ZONE_JITTER_DEG = 10
-# A blocked zone slides along the border by these angles (first free spot wins).
-_ZONE_SLIDES = (0, 12, -12, 24, -24, 36, -36, 48, -48)
 TILE_FRAC = 0.0195            # tile width / frame width at full zoom-out
 _TILE_STEP_FRAC = 0.016       # one tile outward from the border, along a ray, on screen
 DISTANCE_TILES = (2.0, 8.0)
+_DISTANCE_STEP_TILES = 0.5
+# Free spots are looked for on rays from the village centre every few degrees; the drops are
+# spread evenly over the rays that have room (all around a small village; the open sides
+# only when the village fills the floor on one side).
+_RAY_STEP_DEG = 3
+# Drops stay at least this many tiles apart: Baby Dragons dropped on the same spot fly and
+# fight as one clump. On a crowded floor the gap shrinks step by step; past the last step a
+# drop takes the free spot farthest from the others, so two drops never share a spot.
+SEPARATION_TILES = 5.0
+_SEPARATION_STEPS = (1.0, 0.8, 0.65, 0.5)
 
 
 def red_edge_mask(frame):
@@ -149,53 +153,82 @@ def _border_distance_along(hull, centre, angle_rad, limit):
     return None
 
 
-def zone_points(frame, hull, rng = random, distance = DISTANCE_TILES):
-    '''One drop point per zone (ZONE_ANGLES order): on the ray from the village centre, past
-    the border by a random 2-8 tiles. A zone that would land off the floor, on the HUD, the
-    troop bar or the bottom-left buttons first comes closer (never under 2 tiles), then slides
-    along the border (up to +-48 degrees) to the nearest free spot; skipped only if none is
-    free. ``distance`` overrides the 2-8 tile range (retries come closer to the border).'''
-    (h, w) = frame.shape[:2]
-    centre = hull_centre(hull)
+def free_spots(hull, centre, w, h, distance = DISTANCE_TILES):
+    '''Every free drop spot past the border, ray by ray: a list of (angle_deg, [(tiles,
+    (x, y)), ...]) for the rays that have at least one spot on the floor, off the HUD, the
+    troop bar and the bottom-left buttons, ``distance`` tiles past the border.'''
     step = _TILE_STEP_FRAC * w
+    tiles_grid = np.arange(distance[0], distance[1] + 1e-6, _DISTANCE_STEP_TILES).tolist()
+    rays = []
+    for deg in range(0, 360, _RAY_STEP_DEG):
+        angle = math.radians(deg)
+        border = _border_distance_along(hull, centre, angle, limit = 2 * max(w, h))
+        if border is None:
+            continue
+        spots = []
+        for tiles in tiles_grid:
+            d = border + tiles * step
+            (x, y) = (centre[0] + math.cos(angle) * d, centre[1] + math.sin(angle) * d)
+            if _in_safe_area(x, y, w, h):
+                spots.append((tiles, (int(x), int(y))))
+        if spots:
+            rays.append((deg, spots))
+    return rays
+
+
+def drop_points(frame, hull, count, rng = random, distance = DISTANCE_TILES, avoid = ()):
+    '''``count`` drop points around the village, one per troop, spread evenly over the rays
+    that have room (all around a small village, the open sides only when the village fills the
+    floor on one side), from a random ray. Each point lies a random 2-8 tiles past the border
+    (``distance`` overrides the range: retries come closer to the border), or the nearest free
+    distance on that ray, or on a ray close by.
+
+    Every point stays SEPARATION_TILES from the others and from ``avoid`` (troops already
+    dropped); a crowded floor shrinks that gap step by step, and past the last step the free
+    spot farthest from the others is used, so two drops never share a spot. Empty when no
+    spot is free at all.'''
+    if count <= 0:
+        return []
+    (h, w) = frame.shape[:2]
+    rays = free_spots(hull, hull_centre(hull), w, h, distance)
+    if not rays:
+        return []
+    tile = TILE_FRAC * w
+    n = len(rays)
+    start = rng.randrange(n)
+    reach = max(1, n // (2 * count))  # rays a drop may move to either side, half the spacing
+    every_spot = [p for (_deg, spots) in rays for (_t, p) in spots]
+    taken = [(float(x), float(y)) for (x, y) in avoid]
     points = []
-    for base in ZONE_ANGLES:
-        jitter = rng.uniform(-_ZONE_JITTER_DEG, _ZONE_JITTER_DEG)
-        tiles_wanted = rng.uniform(*distance)
+    for i in range(count):
+        k = (start + round(i * n / count)) % n
+        wanted = rng.uniform(*distance)
+        candidates = []
+        for off in [0] + [s * j for j in range(1, reach + 1) for s in (1, -1)]:
+            spots = rays[(k + off) % n][1]
+            candidates += [p for (_t, p) in sorted(spots, key = lambda s: abs(s[0] - wanted))]
         placed = None
-        for slide in _ZONE_SLIDES:
-            angle = math.radians(base + jitter + slide)
-            border = _border_distance_along(hull, centre, angle, limit = 2 * max(w, h))
-            if border is None:
-                continue
-            tiles = tiles_wanted
-            while tiles >= distance[0] - 1e-6:
-                d = border + tiles * step
-                (x, y) = (centre[0] + math.cos(angle) * d, centre[1] + math.sin(angle) * d)
-                if _in_safe_area(x, y, w, h):
-                    placed = (int(x), int(y))
-                    break
-                tiles -= 0.5
+        for factor in _SEPARATION_STEPS:
+            gap = SEPARATION_TILES * factor * tile
+            placed = next((p for p in candidates if all(math.dist(p, q) >= gap for q in taken)), None)
             if placed is not None:
                 break
-        if placed is not None:
-            points.append(placed)
+        if placed is None:
+            pool = every_spot if taken else candidates
+            placed = max(pool, key = lambda p: min((math.dist(p, q) for q in taken), default = 0.0))
+        points.append(placed)
+        taken.append(placed)
     return points
 
 
-def spread_over_zones(points, count, rng = random):
-    '''``count`` drop points over the zones: one per zone round-robin from a random zone,
-    with a few pixels of scatter when a zone gets more than one troop.'''
-    if not points or count <= 0:
-        return []
-    start = rng.randrange(len(points))
-    out = []
-    for i in range(count):
-        (x, y) = points[(start + i) % len(points)]
-        if i >= len(points):
-            (x, y) = (x + rng.randint(-14, 14), y + rng.randint(-10, 10))
-        out.append((int(x), int(y)))
-    return out
+def min_separation_tiles(points, frame_width):
+    '''Smallest distance between two of ``points``, in tiles (inf for fewer than two).'''
+    tile = TILE_FRAC * frame_width
+    best = math.inf
+    for i in range(len(points)):
+        for j in range(i + 1, len(points)):
+            best = min(best, math.dist(points[i], points[j]) / tile)
+    return best
 
 
 def outside_distance_tiles(hull, point, frame_width):
