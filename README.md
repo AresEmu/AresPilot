@@ -1,362 +1,219 @@
-<p align="center"><img src="assets/arespilot_logo.png" width="128" alt="AresPilot logo"></p>
+<div align="center">
+
+<img src="assets/arespilot_logo.png" width="120" alt="AresPilot logo">
 
 # AresPilot
 
-**AresPilot** is a Clash of Clans autopilot by **AresEmu**, built for the **new Clash of
-Clans UI (October 2026)**.
+**A Clash of Clans autopilot for Windows, built for the new 2026 game UI.**
 
-It is **based on [BasePilot](https://github.com/efebolukbasi/BasePilot) by Efe Bolukbasi**
-(MIT license). The original project was written for the previous UI; most of its screen
-detection, the builder menu and the wall upgrade flow stopped working after the update.
-AresPilot rewrites those parts, adds a new interface and new features on top (Builder Base
-Trophy mode, Baby Dragon edge deploy, ...).
+[![Release](https://img.shields.io/github/v/release/AresEmu/AresPilot?label=release)](https://github.com/AresEmu/AresPilot/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6)](#requirements)
 
-Credit for the original design and code goes to the BasePilot author. AresPilot is not an
-official BasePilot release and is not supported by them.
+[**Download**](https://github.com/AresEmu/AresPilot/releases/latest) ·
+[Quick start](#quick-start) ·
+[Features](#features) ·
+[Troubleshooting](#troubleshooting) ·
+[Changelog](CHANGELOG.md)
 
-> ⚠️ **Personal educational project — not a cheating tool, not endorsed by the author for
-> real play.** AresPilot is a study in computer vision, OCR and desktop UI automation. The
-> author **does not condone cheating** or any violation of Supercell's Terms of Service, and
-> does not encourage anyone to use it on a real account. It is **not affiliated with,
-> endorsed by or connected to Supercell** in any way. Read the [Disclaimer](#disclaimer).
+</div>
 
-Technically, it is a Windows desktop app that works on **Clash of Clans on Google Play
-Games (PC)** through screen capture, image recognition and mouse clicks only. No memory
-reading, no packet manipulation, no modified client, and **no network access** of its own:
-everything it stores (settings, logs) stays on the local PC.
+> [!WARNING]
+> **Personal educational project.** AresPilot is a study in computer vision, OCR and desktop
+> automation. It is not affiliated with Supercell, and the author does not condone cheating:
+> automating Clash of Clans breaks Supercell's Terms of Service and can get an account banned.
+> Read the [Disclaimer](#disclaimer) before using it.
 
----
+AresPilot runs Clash of Clans on **Google Play Games for PC** through screen capture, image
+recognition and clicks only. No memory reading, no modified client, no network access of its own.
+Everything it stores (settings, logs) stays on your PC.
 
-## Feature status
+It is based on [BasePilot](https://github.com/efebolukbasi/BasePilot) by Efe Bolukbasi (MIT),
+which was written for the previous game UI. AresPilot rewrites the parts the update broke and
+adds a new interface and new features.
 
-| Status | Meaning |
+## Features
+
+- ⚔️ **Home Village farming**: Valkyries, Sneaky Goblins, Super Minions or Electro Dragons,
+  with heroes, siege machine and Earthquakes.
+- 🐉 **Builder Base farming**: Baby Dragons with the Battle Machine or Flying Machine, and four
+  loot modes (Gold, Both, Elixir, Trophy).
+- 🧱 **Wall upgrades** in both villages, in batches, as soon as your storages reach a threshold.
+- 🏗️ **Auto upgrade** of buildings and heroes through the Build panel (Maxer, Rusher, Dry run).
+- 🎁 **Rewards handled**: event reward cards, end-of-battle chests and Star Bonus chests.
+- 🛡️ **Safe by design**: never confirms a red (unaffordable) price, checks every dialog before
+  confirming, closes unknown popups instead of pressing Okay.
+- 📊 **Run summary**: time, attacks, loot farmed and walls upgraded at the end of every run.
+
+The full list, with what is tested and what is still in progress, is in
+[docs/features.md](docs/features.md).
+
+## Quick start
+
+### 1. Download
+
+Get **`AresPilot.exe`** from the [latest release](https://github.com/AresEmu/AresPilot/releases/latest).
+It is a single file: nothing to install. Windows SmartScreen may warn because the exe is not
+signed; choose *More info → Run anyway*.
+
+### 2. Set up the game
+
+- Play Clash of Clans in **[Google Play Games for PC](https://play.google.com/googleplaygames)**.
+- Set the game language to **English** (*Settings → Language*). AresPilot reads English
+  buttons and names.
+- Use a **16:9** monitor (1920×1080, 2560×1440, ...). Ultrawide or 16:10 monitor? See
+  [this fix](#ultrawide-or-1610-monitor).
+- Don't minimise the game while the bot runs. Your mouse stays free: clicks go straight to
+  the game window.
+
+### 3. Prepare your army
+
+| Run page choice | Army to bring |
 |---|---|
-| ✅ Working | Implemented and verified against the new UI |
-| 🧪 Not fully tested | Implemented, but only briefly or not yet tested live |
-| 🚧 Work in progress | Being rewritten for the new UI, not usable yet |
-| 📋 Planned | Not started yet, to be released |
+| Home Village · **Valkyries** | Valkyries. Save the army as a recipe that starts with Valkyries, at the top of *Saved Recipes*. |
+| Home Village · **Sneaky Goblins** | Sneaky Goblins |
+| Home Village · **Super Minions** | Super Minions |
+| Home Village · **Edrags** | 12 Electro Dragons |
+| **Builder Base** | Baby Dragons in every camp + Battle Machine or Flying Machine |
 
-### ✅ Working (new UI, 16:9)
+In the Home Village the bot also uses heroes, a Log Launcher or Siege Barracks, a Super Dragon
+and Earthquake spells when you bring them. Other troops and spells are not deployed.
 
-- **New UI support (16:9 profile).** All Home Village templates re-cropped at 2560×1440
-  for the October 2026 UI.
-- **New interface.** Black, Apple-style desktop app: sidebar with icons, Start / Stop in
-  the page header, iOS-style switches, centred number fields.
-- **Builder Base on the new UI.** Village detection, boat, Find Now, attack, battle end,
-  Return Home and the Star Bonus popup use templates re-cropped for the
-  new UI. Baby Dragon army with the Battle Machine / Flying Machine.
-- **Builder Base wall upgrades.** Same flow as the Home Village (Build panel + Upgrade
-  More), with its own threshold in millions (one decimal, e.g. 1.3M).
-- **Builder Base loot modes.** *Gold* (end the battle at 2 stars), *Both* (at 1 star),
-  *Elixir* (surrender right after deploying).
-- **Auto upgrade via the new Build panel ("Buildings & Heroes").** Opens the panel with
-  the Build button, scans the whole list, reads names and costs, and confirms upgrades.
-  Modes: **Maxer**, **Rusher**, **Dry run** (logs only, clicks nothing).
-- **Wall upgrades via the Build panel.** Triggered by the full-storage icon. Finds the
-  Wall row, picks the cheapest payable wall level, uses **Upgrade More** to batch walls
-  in the multi-select bar, pays with gold or elixir and confirms the "Upgrade Walls"
-  popup. Up to two rounds per check; the second round only runs if a wall level is still
-  payable after re-reading the HUD. Wall prices are re-read every time (never cached to
-  disk). The number of walls recorded is taken from the actual HUD drop (cost ÷ price per
-  wall), so the summary stays correct even if the batch counter is off.
-- **New price and HUD reader.** Prices and gold/elixir/dark elixir amounts are read with a
-  dedicated digit-glyph matcher instead of Tesseract, with thousands-grouping checks and
-  red-text detection (unaffordable prices).
-- **Both confirm dialog layouts.** Works with and without the Gold Pass (discounted price
-  layout vs yellow banner layout).
-- **Safe popup handling.** Gem-spend dialogs, panels and unknown popups are closed via their
-  X / Cancel buttons — never a blind Okay/Confirm.
-- **End-of-run summary.** When a run ends, a summary window and log entry show run time,
-  number of attacks, farmed gold/elixir/dark elixir, and walls upgraded grouped by level
-  with their cost.
-- **Robust loot tracker.** HUD amounts are only accepted when two frames agree. A sudden
-  "collapse" (e.g. 9,000,000 read as 6) triggers a re-read, and if it persists the previous
-  value is held for one cycle instead of counting a fake loss or a fake gain. Real spends
-  (walls, upgrades) are not counted as farmed loot.
-- **Varied attack patterns.** Heroes are dropped at random points of the perimeter and
-  hero abilities fire 0–10 s after each hero is deployed. Troop placement
-  (Valkyrie, Super Minion, Sneaky Goblin) was reworked:
-  - troops follow random waypoints inside a **3.5-tile band** along each side, joined by a
-    half-smoothed curve (a gentle, irregular wave rather than a perfect spline);
-  - drops land **between tiles** too, not only on tile centres (irregular spacing of
-    0.2–0.45 tiles);
-  - drag speed changes **±30% per hop**, and each side takes ±10% of its share of time;
-  - **corners are crossed faster** (≈1.4× with its own ±30% variation each time) to avoid
-    big troop clumps where two sides meet;
-  - **Valkyrie** deploy lasts **7 s**; **Super Minion** deploy lasts a new random
-    **2.8–4.2 s** every attack.
-- **Full zoom-out before attacking**, so the first attack after the menus is not zoomed in.
-- **Faster template matching.** Coarse-to-fine matching with a template cache
-  (~4× faster per call).
-- **Reliable list scrolling.** The Build panel list is checked to have actually moved and
-  stopped before it is read.
-- **Settings auto-save** on every change; Duration field fixed.
-- **AresPilot data folder.** Settings, logs and debug frames live in
-  `%LOCALAPPDATA%\AresPilot`; on the first start, settings from an older `BasePilot`
-  install are copied over automatically (the old folder is left untouched).
-- **Separate test logs.** Unit tests write to `%LOCALAPPDATA%\AresPilot\test_logs`
-  (see `ARESPILOT_LOG_DIR`) so they never pollute the real run log.
+### 4. Run
 
-### 🧪 Implemented but not fully tested
+Open AresPilot, accept the disclaimer (first start only), then on the **Run** page:
 
-- **Builder Base Trophy mode.** Never ends the battle early: plays the first village to
-  100%, then attacks the second village with the surviving dragons and the fresh cards,
-  and waits for the battle to finish before Return Home.
-- **Baby Dragon edge deploy (Builder Base, both stages).** Full zoom-out, then the bot reads
-  the red "no deploy" border around the village and drops one dragon per zone in six zones
-  around it, a random **2–8 tiles** outside the border, all within ~3 s. Zones never land
-  off the playable floor, on the HUD, on the troop bar or on the buttons: a blocked zone
-  comes closer to the border or slides along it. The machine is dropped with one of the
-  dragons; all abilities fire together after a random 10–25 s. In the second village the
-  bot first taps a building with a dragon selected to make the game show the border.
-- **Missed-drop retries.** Dragons the game did not take (their card still shows the troop
-  switch button) are dropped again closer to the border, up to 5 rounds.
-- **Last run remembered.** Village, army, Builder Base mode, duration and all switches of
-  the Run page come back as they were at the last Start.
-- **Rusher mode** on the new Build panel.
-- **Timed event "Pick a Reward!" overlay** (33/66/100% damage): the bot now clicks the
-  right-hand card (gold or grey, whatever it contains) instead of waiting ~12 s for the
-  countdown. When the event is over and the overlay never shows up, attacks run as before.
-  See [docs/event-rewards.md](docs/event-rewards.md).
-- **Sneaky Goblin** with the new troop placement (shares the Valkyrie/Super Minion code,
-  not run live yet).
-- **Earthquake "Random Placement"** after the fix.
-- **Gem dialog recovery** in rare cases (seen once during a large elixir batch, cause not
-  confirmed).
-- **Run until maxed / idling** logic with the new panel (inherited from upstream, not
-  re-verified over long sessions).
+1. pick the **village** and the **attack strategy** that match your army;
+2. pick how long: a **duration**, **Run until maxed** (until you press Stop) or **Star Bonus**;
+3. optionally turn on **Upgrade walls** or **Auto upgrade**;
+4. press **Start**.
 
-### 🚧 Work in progress
+You can start from either village: the bot takes the boat if needed. The **Logs** page shows
+what it is doing; **Stop** ends the run and shows a summary.
 
-- **Faster wall rounds.** Remember where the Wall row is during a run (not on disk) and
-  start the scan from there, cutting most of the list scrolling (~+10% attacks/h
-  expected with walls on).
-- **Faster Stop.** Pressing Stop can take 6–9 s to take effect mid-attack (spell and hero
-  deploy, OCR passes are not interruptible yet). Goal: ~1–1.5 s.
-- **Wall batch counter.** The fallback wall count is one short per batch (the first
-  selected wall isn't counted). Harmless today because the HUD-drop count is used, but it
-  will be corrected as a safety net.
-- **Stuck-screen timeout loop.** A known case where the bot can keep retrying the same
-  recovery step after a timeout.
-- **Player list / multi-run.** The Players page shows "Work in progress" while the
-  player list and multi-run are reworked.
-- **Night Witches** (Builder Base): listed in the UI, not implemented yet.
+<details>
+<summary><b>What do the Run page options do?</b></summary>
 
-### 📋 Planned / to be released
+- **Auto upgrade**: *Maxer* starts the cheapest affordable upgrade (never the Town Hall),
+  *Rusher* upgrades the Town Hall first, *Dry run* only writes in the log what it would do.
+- **Upgrade walls**: spends gold and elixir on walls. The trigger threshold and the builders
+  kept free are in *Settings*.
+- **Ranked attack fill**: uses your **ranked** attacks. Leave it off unless you want that.
+- **Builder Base · Prioritise**: *Gold* ends the battle at 2 stars, *Both* at 1 star, *Elixir*
+  surrenders right after deploying, *Trophy* plays both villages to the end.
+- **Star Bonus**: stops once the daily Star Bonus is claimed (at most 15 minutes).
 
-- **Laboratory chip on the new UI** (lab status in Live status, max 2 labs).
-- **Multi-account** support.
-- **Timer** function.
-- **Skipping low-loot bases.**
-- **16:10 profile** update for the new UI (only the 16:9 profile is updated for now).
+</details>
 
-Not automated (as upstream): starting laboratory research and Pet House upgrades.
+## Requirements
 
-## Safety rails
+- Windows 10 or 11
+- Clash of Clans on Google Play Games for PC, with the October 2026 UI, in English
+- A 16:9 game picture (tested at 2560×1440; other 16:9 sizes are scaled)
 
-Automation that spends resources has to be careful, so AresPilot:
+## Troubleshooting
 
-- Never confirms a purchase whose price shows red (unaffordable → gem-spend risk).
-- Checks that the confirm dialog matches the picked row (name, price and resource) before
-  clicking Confirm.
-- Verifies every upgrade actually started by checking the builder counter afterwards.
-- Closes unknown dialogs via their close button or empty ground — never a blind "Okay".
-- Keeps a gold buffer so matchmaking entry fees are never spent on walls.
-- Saves screenshots of anything it couldn't verify to `%LOCALAPPDATA%\AresPilot\debug\`
-  instead of retrying blindly.
+<details>
+<summary><b>"Clash of Clans window not found"</b></summary>
 
-## Download
+Open the game first. If it is open, go to **Settings**, select the Clash of Clans window in the
+list, press **Test**, then **Use this window**.
 
-Builds, when available, are on the
-[Releases page](https://github.com/AresEmu/AresPilot/releases) — a single file, no
-install needed (Tesseract is bundled). Windows SmartScreen may warn about an unsigned exe.
-They are provided for studying the code in action, **not as a tool to play the game**:
-read the [Disclaimer](#disclaimer) first. On its first start the app shows the same
-disclaimer and runs only after you accept it.
-What changed in each version: [CHANGELOG](CHANGELOG.md).
+</details>
 
-## Setup
+<details>
+<summary><b>The log is full of <code>... .png not found</code></b></summary>
 
-Follow the steps in order. Each one says what to do and how to check it worked.
+The game is not in English, not 16:9, or not on the new UI. Check [step 2](#2-set-up-the-game).
 
-### 1. What you need
+</details>
 
-- A **Windows 10 or 11** PC.
-- A **16:9 monitor** (1920×1080, 2560×1440, 3840×2160, ...). An ultrawide or 16:10 monitor
-  also works, with one extra step ([step 5](#5-ultrawide-or-1610-monitor-only)).
-  AresPilot is tested at **2560×1440**; other 16:9 sizes are scaled from it.
-- **Clash of Clans on Google Play Games for PC**, with the October 2026 UI.
-- **Python 3.11 or newer** (tested with 3.13) and **Tesseract OCR 5**: both are free, and
-  step 3 explains how to install them.
+<details>
+<summary><b>"Troops not found 4 times in a row — stopping"</b></summary>
 
-### 2. Prepare the game
+The army in the game does not match the strategy chosen on the Run page. Check
+[step 3](#3-prepare-your-army).
 
-1. Install [Google Play Games for PC](https://play.google.com/googleplaygames), sign in and
-   install Clash of Clans from it.
-2. **Set the game language to English**: in Clash of Clans open *Settings → Language →
-   English*. AresPilot recognises buttons by their English text (Attack, Find Now, Surrender,
-   Okay, ...) and reads English names in the Build panel. With any other language it finds
-   almost nothing.
-3. Google Play Games draws the game with the shape of your monitor, decided **when the game
-   starts**. On a 16:9 monitor there is nothing to do. On an ultrawide or 16:10 monitor, do
-   [step 5](#5-ultrawide-or-1610-monitor-only) before playing.
-4. While the bot runs, keep the game window open and **do not minimise it**: a minimised
-   window cannot be captured. AresPilot sends its clicks straight to the game window, so your
-   mouse pointer is not moved.
+</details>
 
-### 3. Install Python and Tesseract
+<details>
+<summary><b>"Could not read the window size"</b></summary>
 
-1. **Python:** download the installer from [python.org](https://www.python.org/downloads/windows/).
-   On the first installer screen, tick **"Add python.exe to PATH"**, then click *Install Now*.
-2. **Tesseract:** open *PowerShell* and run:
+The game window is minimised. Restore it.
 
-   ```
-   winget install UB-Mannheim.TesseractOCR
-   ```
+</details>
 
-   Or use the installer from the [UB-Mannheim page](https://github.com/UB-Mannheim/tesseract/wiki).
-   Keep the default folder, `C:\Program Files\Tesseract-OCR`, where AresPilot looks for it.
-   If you install it somewhere else, set the `TESSERACT_CMD` environment variable to the
-   full path of `tesseract.exe`.
-3. **Check:** close and reopen PowerShell, then run `python --version`. It must print
-   `Python 3.11` or newer.
+<a name="ultrawide-or-1610-monitor"></a>
+<details>
+<summary><b>Ultrawide or 16:10 monitor</b></summary>
 
-### 4. Download and start AresPilot
+Google Play Games gives the game the shape of your monitor when the game starts. To get a
+16:9 game on another monitor:
 
-1. Download the code: on the [repository page](https://github.com/AresEmu/AresPilot) click
-   *Code → Download ZIP* and extract it (for example to `C:\AresPilot`), or with Git:
+1. In AresPilot open **Settings** and click **Switch display to 16:9**.
+2. Fully close Clash of Clans, then open it again.
+3. Click **Restore my display**. The game stays 16:9.
+4. Select the game window in Settings and press **Test**: it must show `(16:9)` and
+   `Surface OK to use.`
 
-   ```
-   git clone https://github.com/AresEmu/AresPilot.git
-   ```
+Repeat this every time you restart the game.
 
-2. Open PowerShell **in that folder** (in File Explorer: open the folder, type `powershell`
-   in the address bar and press Enter) and install the dependencies, once:
+</details>
 
-   ```
-   pip install -r requirements.txt
-   ```
+<details>
+<summary><b>Where are the logs and settings?</b></summary>
 
-3. Start AresPilot:
+In `%LOCALAPPDATA%\AresPilot`. The log is `arespilot.log`; the **Open in Explorer** button on
+the Logs page opens its folder.
 
-   ```
-   python main.py
-   ```
+</details>
 
-4. On the first start AresPilot shows the disclaimer: read it and accept it, or the app
-   closes.
+## Run from source
 
-From then on, starting AresPilot only needs step 3, from the same folder. Settings and logs
-are stored in `%LOCALAPPDATA%\AresPilot`.
+<details>
+<summary><b>Run with Python, or build the exe yourself</b></summary>
 
-### 5. Ultrawide or 16:10 monitor only
+You need **Python 3.11+** (tick *Add python.exe to PATH* in the installer) and
+**Tesseract OCR 5** in its default folder, `C:\Program Files\Tesseract-OCR`:
 
-Skip this step on a 16:9 monitor.
+```
+winget install UB-Mannheim.TesseractOCR
+```
 
-1. In AresPilot open **Settings** and click **Switch display to 16:9**. Your screen changes
-   resolution.
-2. **Fully close** Clash of Clans (close its Google Play Games window), then open it again.
-3. Click **Restore my display**. The screen goes back to normal, and the game, already
-   running, stays 16:9.
-4. **Check:** in the window list of Settings select the Clash of Clans window and press
-   **Test**. The result must show `(16:9)` and `Surface OK to use.`
+Then:
 
-Repeat this step every time you restart the game.
+```
+git clone https://github.com/AresEmu/AresPilot.git
+cd AresPilot
+pip install -r requirements.txt
+python main.py
+```
 
-### 6. Prepare your army in the game
+If Tesseract is somewhere else, set `TESSERACT_CMD` to the full path of `tesseract.exe`.
 
-**Home Village.** Choose one of the four strategies of the Run page and bring that army:
+**Build the exe:** copy all the contents of `C:\Program Files\Tesseract-OCR` into a
+`tesseract_bundle` folder (so that `tesseract_bundle\tesseract.exe` exists), then:
 
-| Strategy | Main troop | Extra setup |
-|---|---|---|
-| **Valkyries** | Valkyries | Save the army as a recipe whose first troop is the Valkyrie, and keep it at the top of *Saved Recipes*. If the army screen shows no Valkyries, the bot loads that recipe before attacking. |
-| **Sneaky Goblins** | Sneaky Goblins | — |
-| **Super Minions** | Super Minions | — |
-| **Edrags** | 12 Electro Dragons | — |
+```
+pip install pyinstaller
+python -m PyInstaller --noconfirm AresPilot.spec
+```
 
-With every strategy the bot also uses, when they are in the army:
-- **Heroes:** Barbarian King, Archer Queen, Grand Warden, Royal Champion, Minion Prince and
-  Dragon Duke, with their abilities;
-- **Siege machine:** Log Launcher or Siege Barracks;
-- **Super Dragon;**
-- **Earthquake spells.**
+The exe is `dist\AresPilot.exe`. Deploy details for each army are in
+[docs/armies.md](docs/armies.md).
 
-Other troops and spells are not deployed. Keep the game's default deploy bar order (do not
-rearrange the slots). [docs/armies.md](docs/armies.md) explains how each army is dropped.
-
-**Builder Base.** Fill every camp with **Baby Dragons** and bring the **Battle Machine** or the
-**Flying Machine**. Other troops are not supported: after 4 battles in a row without Baby
-Dragons a timed run stops.
-
-### 7. Start a run
-
-Leave the game on the village screen. On the **Run** page of AresPilot:
-
-1. **Village:** *Home Village* or *Builder Base*. If the game is in the other village, the bot
-   takes the boat by itself.
-2. **Attack Strategy:** the army you prepared in step 6.
-3. **Schedule:**
-   - **Duration** in minutes; or
-   - **Run until maxed:** no time limit, it runs until you press Stop. With full storages and
-     nothing to upgrade it waits and checks again every 5 minutes; or
-   - **Star Bonus:** stops when the daily Star Bonus is claimed (at most 15 minutes).
-4. **Modes (Home Village):**
-   - **Auto upgrade:** *Off*, *Maxer* (cheapest affordable upgrade, never the Town Hall),
-     *Rusher* (Town Hall first) or *Dry run* (only writes in the log what it would upgrade).
-   - **Upgrade walls:** spends gold and elixir on walls. The threshold that triggers it is in
-     *Settings*, together with the builders kept free for walls.
-   - **Ranked attack fill:** uses your **ranked** attacks. Leave it off unless you want that.
-5. **Modes (Builder Base):** *Prioritise* Gold, Both, Elixir or Trophy (the **?** button
-   explains each one) and *Upgrade walls* (threshold in *Settings*).
-6. Press **Start** at the top of the page. **Stop** ends the run; a summary shows run time,
-   attacks, loot farmed and walls upgraded.
-
-The **Logs** page shows what the bot is doing while it runs.
-
-### Common problems
-
-- **"Clash of Clans window not found"**: open the game first. If it is open, go to
-  **Settings**, select the Clash of Clans window in the list, press **Test**, then **Use this
-  window**.
-- **Test does not show `(16:9)`**: the game was started with a different screen shape. Do
-  [step 5](#5-ultrawide-or-1610-monitor-only).
-- **Test says "Could not read the window size"**: the game window is minimised. Restore it.
-- **The log is full of `... .png not found`**: the game is not in English, not 16:9, or not
-  on the October 2026 UI (steps 2 and 5).
-- **The log says "Tesseract not configured"**: Tesseract is not installed in
-  `C:\Program Files\Tesseract-OCR` and `TESSERACT_CMD` is not set (step 3).
-- **"Troops not found 4 times in a row — stopping"**: the army in the game does not match
-  the strategy chosen on the Run page (step 6).
-- The log file is `%LOCALAPPDATA%\AresPilot\arespilot.log`. The **Open in Explorer** button
-  on the Logs page opens its folder.
-
-### Building the exe (optional)
-
-The exe is a single file that runs without Python or Tesseract installed.
-
-1. Copy **all the contents** of `C:\Program Files\Tesseract-OCR` into a `tesseract_bundle`
-   folder inside the AresPilot folder, so that `tesseract_bundle\tesseract.exe` and
-   `tesseract_bundle\tessdata\eng.traineddata` exist. The folder is not in the repository
-   (about 40 MB).
-2. In PowerShell, in the AresPilot folder:
-
-   ```
-   pip install pyinstaller
-   python -m PyInstaller --noconfirm AresPilot.spec
-   ```
-
-3. The exe is `dist\AresPilot.exe`. Close it before building again.
+</details>
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
 
 - Original BasePilot: © 2026 Efe Bolukbasi.
 - AresPilot (October 2026 UI update, new interface and all later changes): © 2026 AresEmu,
   released under the same MIT license.
 
-If you reuse this code, keep both copyright notices, as the MIT license requires. Tesseract, bundled into the exe, ships
-under the Apache 2.0 license.
+If you reuse this code, keep both copyright notices, as the MIT license requires. Tesseract,
+bundled into the exe, ships under the Apache 2.0 license.
 
 ## Disclaimer
 

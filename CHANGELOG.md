@@ -13,6 +13,11 @@
   popup (Claim) are opened the same way: tap until the reward shows, then Continue. More
   reward screens in a row are all continued.
 
+### Changed
+- **New README.** Shorter page: download, a 4-step quick start, an army table and
+  troubleshooting answers. The full feature list moved to
+  [docs/features.md](docs/features.md); running from source is in a collapsible section.
+
 ## 1.1.1
 
 ### Fixed
