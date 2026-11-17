@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 
 ### Fixed
 - **Builder Base: dragons stacked on each other** (every mode, both villages of Trophy).
