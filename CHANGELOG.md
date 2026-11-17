@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.2
 
 ### Fixed
 - **Builder Base walls off for the whole run after one bad look.** The first check reads
