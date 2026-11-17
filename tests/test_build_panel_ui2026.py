@@ -144,12 +144,14 @@ class ListSettleTests(unittest.TestCase):
         panel.scroll(2)
         frame = panel.wait_list_settled()
         self.assertTrue((frame == shot('build_mid.png')).all())
+        self.assertTrue(panel.last_scroll_moved)
 
     def test_list_that_never_moves_returns_at_timeout(self):
         panel = self.panel(['build_bottom.png'])
         panel.scroll(2)
         frame = panel.wait_list_settled()
         self.assertTrue((frame == shot('build_bottom.png')).all())
+        self.assertFalse(panel.last_scroll_moved)  # end of the list: the wall walk stops here
 
 
 class _FakeWindow:

@@ -99,7 +99,14 @@ _WALL_BATCH_MAX_ADDS = 15
 _WALL_MENU_SCROLL_STEPS = 8  # OCR positions polled: as-opened + 7 wheel nudges down the list
 _WALL_MENU_WHEEL_CLICKS = 2  # ~3-4 rows per nudge; the OCR band spans the whole popup so a nudge cannot jump the Wall row past it
 _WALL_ROW_STABLE_TOL = 30  # ref px: max y drift between consecutive frames before the row is trusted for a click
-_WALL_PANEL_SCROLL_STEPS = 14  # Build panel (UI ottobre 2026): ~35 rows, Wall sits in the last quarter
+# Build panel walk for the Wall row: down to the END of the list. The game sorts the list by
+# what the loot can pay, so the Wall row moves with the storages (live 17/11/2026: nudge 6
+# with 14M gold + 14M elixir, past nudge 14 with 14M gold + 2.4M elixir, nudge 13 with full
+# storages) — the old fixed 14 nudges missed it for an hour. The walk stops when the wheel
+# no longer moves the list (twice in a row: one lost wheel event is not the end); the cap is
+# only a safety net.
+_WALL_PANEL_MAX_NUDGES = 45
+_WALL_PANEL_END_STILL_NUDGES = 2
 # Builder Base walls: open the Build panel only when the loot pays at least this many
 # walls of the cheapest known level (one wall is not worth the ~20 s round).
 _BB_WALL_MIN_WALLS = 2
@@ -1248,8 +1255,10 @@ deselect, which would eat the upcoming Attack click.'''
             return self._find_cheapest_wall_row(panel, triplet)
         candidate = None  # (center, cost) of the last frame's pick
         scrolls = 0
+        still = 0  # consecutive nudges that did not move the list
+        reached_end = False
         seen = set()
-        for _ in range(_WALL_PANEL_SCROLL_STEPS * 2):
+        for _ in range(_WALL_PANEL_MAX_NUDGES * 2):
             self._check_stop()
             frame = panel.frame()
             if frame is None:
@@ -1269,22 +1278,27 @@ deselect, which would eat the upcoming Attack click.'''
                     return None
                 continue
             candidate = None
-            scrolls += 1
-            if scrolls >= _WALL_PANEL_SCROLL_STEPS:
+            if scrolls >= _WALL_PANEL_MAX_NUDGES:
                 break
+            scrolls += 1
             panel.scroll(_WALL_MENU_WHEEL_CLICKS)
             panel.wait_list_settled()  # until the list stops easing, not a fixed 0.6 s
             if self.stop_event.is_set():
                 return None
-        if seen and scrolls >= _WALL_PANEL_SCROLL_STEPS:
+            still = still + 1 if getattr(panel, 'last_scroll_moved', True) is False else 0
+            if still >= _WALL_PANEL_END_STILL_NUDGES:
+                reached_end = True  # this frame was already read before the nudge
+                break
+        if seen and reached_end:
             # Whole list walked from the top: these are exactly the levels left — drop
             # any saved level finished since (it would keep the pre-check opening the
             # panel for a price that no longer exists).
             self._wall_costs = set(seen)
+        where = 'end of the list' if reached_end else 'stopped before the end of the list'
         if seen:
-            logger.info('Wall upgrade: no payable wall level (seen %s, HUD %s) — skipping this pass', sorted(seen), triplet)
+            logger.info('Wall upgrade: no payable wall level (seen %s, HUD %s, %d nudge(s), %s) — skipping this pass', sorted(seen), triplet, scrolls, where)
         else:
-            logger.info('Wall upgrade: Wall row not found in the Build panel — skipping this pass')
+            logger.info('Wall upgrade: Wall row not found in the Build panel (%d nudge(s), %s) — skipping this pass', scrolls, where)
         panel.close_all()
         return None
 
@@ -1303,7 +1317,7 @@ deselect, which would eat the upcoming Attack click.'''
         payable = set()
         previous_sig = None
         reached_end = False
-        for _ in range(_WALL_PANEL_SCROLL_STEPS):
+        for _ in range(_WALL_PANEL_MAX_NUDGES):
             self._check_stop()
             frame = panel.frame()
             if frame is None:
@@ -1329,7 +1343,7 @@ deselect, which would eat the upcoming Attack click.'''
             return None
         target = min(payable)
         candidate = None
-        for _ in range(_WALL_PANEL_SCROLL_STEPS * 2):
+        for _ in range(_WALL_PANEL_MAX_NUDGES * 2):
             self._check_stop()
             frame = panel.frame()
             if frame is None:

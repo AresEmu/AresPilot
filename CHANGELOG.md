@@ -9,6 +9,12 @@
   now gets its own spot, spread evenly over the sides with room and at least 5 tiles from
   the others (the gap shrinks only on a crowded floor, never to the same spot). Retried
   drops keep away from the spots already used.
+- **Walls not upgraded, second round skipped.** The Build panel sorts its list by what
+  the loot can pay, so the Wall row moves: after a batch paid with elixir, or with full
+  storages and the new November buildings, it sat past the 14 scroll steps the bot
+  looked at, and every pass ended with "Wall row not found". The bot now scrolls down to
+  the real end of the list (it stops when the list no longer moves), and the panel is
+  wheeled back to the top in up to 6 bursts instead of 3.
 
 ### Changed
 - **Builder Base abilities** fire after a random 10–20 s (was 10–25 s), also in the

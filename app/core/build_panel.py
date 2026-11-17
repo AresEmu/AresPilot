@@ -39,9 +39,11 @@ _WALLS_DIALOG_TEXT_FRAC = (0.31, 0.41, 0.38, 0.095)  # the question line(s)
 _PANEL_SCROLL_POINT_FRAC = (0.865, 0.50)  # wheel target inside the panel list
 _PANEL_OPEN_POLLS = 8
 # The panel may reopen at its last scroll position: wheel up in bursts until a burst
-# moves nothing (at most _RESET_MAX_BURSTS x _RESET_BURST_CLICKS = the old 30 clicks).
+# moves nothing. The wall walk now goes down to the end of the list (40+ clicks on a
+# TH17 list after the November 2026 update), so up to 6 bursts; a list already at the
+# top still costs one burst.
 _RESET_BURST_CLICKS = 10
-_RESET_MAX_BURSTS = 3
+_RESET_MAX_BURSTS = 6
 _PANEL_WHEEL_PAUSE = (0.03, 0.08)  # s between wheel clicks inside the panel (input default 0.05-0.2)
 # "List is still" detection, replacing fixed 0.6-1.0 s sleeps after each nudge.
 _PANEL_LIST_FRAC = (0.74, 0.07, 0.25, 0.82)
@@ -277,7 +279,9 @@ class BuildPanel:
         A list that never moves (end or top reached) returns at ``timeout``. Two equal
         thumbnails before the wheel took effect used to count as "settled" (live
         repro: the upgrade scan read 12 of 33 rows and stopped, thinking it had
-        reached the end). Returns the last frame (None on stop).'''
+        reached the end). Returns the last frame (None on stop). ``last_scroll_moved``
+        tells afterwards whether the nudge moved the list (False: end or top reached).'''
+        self.last_scroll_moved = None
         if self._wait(_LIST_SETTLE_FIRST_WAIT):
             return None
         before = getattr(self, '_pre_scroll_signature', None)
@@ -291,11 +295,14 @@ class BuildPanel:
             if not moved and signature is not None and not self._same_list(before, signature):
                 moved = True
             if moved and self._same_list(previous, signature):
+                self.last_scroll_moved = True
                 return frame
             previous = signature
             if self._wait(_LIST_SETTLE_INTERVAL):
                 return None
             waited += _LIST_SETTLE_INTERVAL
+        # Timed out: the list never moved (end or top reached), or never stopped easing.
+        self.last_scroll_moved = moved
         return frame
 
     def reset_to_top(self):
