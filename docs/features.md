@@ -23,14 +23,18 @@ Everything AresPilot does, and how far each part is. The short version is in the
   Return Home and the Star Bonus popup use templates re-cropped for the
   new UI. Baby Dragon army with the Battle Machine / Flying Machine.
 - **Builder Base wall upgrades.** Same flow as the Home Village (Build panel + Upgrade
-  More), with its own threshold in millions (one decimal, e.g. 1.3M).
+  More), with its own threshold in millions (one decimal, e.g. 1.3M). The first look reads
+  the wall prices; if it cannot finish (panel not opened, list not read to the end) it is
+  tried again at the next checks, up to 3 times.
 - **Builder Base loot modes.** *Gold* (end the battle at 2 stars), *Both* (at 1 star),
   *Elixir* (surrender right after deploying).
 - **Auto upgrade via the new Build panel ("Buildings & Heroes").** Opens the panel with
   the Build button, scans the whole list, reads names and costs, and confirms upgrades.
   Modes: **Maxer**, **Rusher**, **Dry run** (logs only, clicks nothing).
 - **Wall upgrades via the Build panel.** Triggered by the full-storage icon. Finds the
-  Wall row, picks the cheapest payable wall level, uses **Upgrade More** to batch walls
+  Wall row (scrolling down to the end of the list if needed: the game re-sorts the list
+  by what the loot can pay, so the row moves), picks a payable wall level (see Settings →
+  Upgrade order), uses **Upgrade More** to batch walls
   in the multi-select bar, pays with gold or elixir and confirms the "Upgrade Walls"
   popup. Up to two rounds per check; the second round only runs if a wall level is still
   payable after re-reading the HUD. Wall prices are re-read every time (never cached to

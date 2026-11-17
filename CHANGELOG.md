@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Builder Base walls off for the whole run after one bad look.** The first check reads
+  the BB wall prices; when that look did not get them (Build panel not opened, list not
+  read to the end — before 1.2.1 the walk stopped after 14 scroll steps) the BB walls were
+  never tried again until the bot was restarted. A look cut short is now tried again at
+  the next checks, up to 3 times; only a whole Build list without a Wall row turns the BB
+  walls off for the run.
+
 ## 1.2.1
 
 ### Fixed

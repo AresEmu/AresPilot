@@ -91,6 +91,7 @@ class WallWalkTests(unittest.TestCase):
         self.assertEqual(panel.scrolls, 18 + 2)  # two nudges that move nothing = the end
         self.assertTrue(any('end of the list' in line for line in logs.output))
         self.assertEqual(bot._wall_costs, {WALL_PRICE})  # nothing seen: saved prices kept
+        self.assertTrue(bot._wall_walk_reached_end)  # the Builder Base first look relies on it
 
     def test_one_lost_wheel_event_is_not_the_end(self):
         panel = FakePanel(length = 30, lost = (5,))
@@ -110,6 +111,7 @@ class WallWalkTests(unittest.TestCase):
         self.assertIsNone(point)
         self.assertEqual(panel.scrolls, _WALL_PANEL_MAX_NUDGES)
         self.assertEqual(bot._wall_costs, {WALL_PRICE})  # end not reached: prices not replaced
+        self.assertFalse(bot._wall_walk_reached_end)
 
 
 if __name__ == '__main__':

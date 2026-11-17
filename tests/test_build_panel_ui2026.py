@@ -546,9 +546,42 @@ class BuilderBaseWallTests(unittest.TestCase):
 
     def test_first_pass_reads_the_prices_once(self):
         bot = self.bot((226133, 631942, 2459))
+
+        def whole_list_without_walls():
+            bot._wall_walk_reached_end = True
+        bot._upgrade_walls.side_effect = whole_list_without_walls
         self.run_pass(bot)
-        self.run_pass(bot)  # still no prices (no Wall row): do not reopen every attack
+        self.run_pass(bot)  # whole list read, no Wall row: do not reopen every attack
         bot._upgrade_walls.assert_called_once()
+        self.assertTrue(bot._bb_wall_probed)
+
+    def test_first_look_cut_short_is_tried_again(self):
+        # Panel not opened / walk stopped before the end of the list: that one look must
+        # not turn the BB walls off for the whole run (old behaviour).
+        from app.core.bot import _BB_WALL_PROBE_TRIES
+        bot = self.bot((226133, 631942, 2459))
+        self.run_pass(bot)
+        self.assertFalse(bot._bb_wall_probed)
+        for _ in range(_BB_WALL_PROBE_TRIES + 2):
+            self.run_pass(bot)
+        self.assertEqual(bot._upgrade_walls.call_count, _BB_WALL_PROBE_TRIES)
+        self.assertTrue(bot._bb_wall_probed)
+
+    def test_second_look_reads_the_prices(self):
+        bot = self.bot((226133, 900000, 2459))
+        looks = []
+
+        def look():
+            looks.append(1)
+            if len(looks) == 2:
+                bot._wall_costs = {320000}  # Wall row found on the second look
+        bot._upgrade_walls.side_effect = look
+        self.run_pass(bot)
+        self.run_pass(bot)
+        self.assertEqual(bot._wall_costs, {320000})
+        self.assertFalse(bot._bb_wall_probed)
+        self.run_pass(bot)  # prices known: 900k pays two 320k walls
+        self.assertEqual(bot._upgrade_walls.call_count, 3)
 
     def test_first_pass_waits_for_the_home_screen(self):
         bot = self.bot((226133, 631942, 2459))

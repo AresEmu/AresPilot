@@ -112,6 +112,10 @@ _WALL_PANEL_END_STILL_NUDGES = 2
 _BB_WALL_MIN_WALLS = 2
 # ...and keeps buying batches (up to this many per check) while the loot still pays that.
 _BB_WALL_MAX_ROUNDS = 5
+# First look for the BB wall prices: a look that did not get to the end of the Build list
+# (panel not opened, walk cut short) is tried again on a later check, up to this many
+# times. Only a whole list without a Wall row turns the BB walls off for the run.
+_BB_WALL_PROBE_TRIES = 3
 _WALL_GOLD_ATTACK_BUFFER = 50000  # gold kept for the Find a Match fee (same margin as UpgradePolicy)
 _WALL_BAR_PITCH_FRAC = 0.081  # wall bar button pitch at 1x (frame-width fraction, 2559-wide frames)
 _WALL_BAR_SCALES = (1.0, 0.95, 0.9, 0.85)  # wall selection bar: 1x on the map, ~0.90x beside the open Build panel
@@ -773,12 +777,15 @@ deselect, which would eat the upcoming Attack click.'''
                     return None
             logger.info('Builder Base walls: gold=%s elixir=%s reached %s — upgrading', triplet[0], triplet[1], reason)
         elif getattr(self, '_bb_wall_probed', False):
-            return None  # prices unknown after one look: no Wall row to upgrade
+            return None  # no Wall row in the whole Build list: nothing to upgrade
         else:
             if not self.vision.find_template(frame, 'attack.png', region = VisionService.bottom_half_region(frame))[0]:
                 return None  # not home yet (popup, battle): look for the prices next time
-            logger.info('Builder Base walls: first pass — reading the wall prices')
-        self._bb_wall_probed = True
+            tries = getattr(self, '_bb_wall_probe_tries', 0) + 1
+            self._bb_wall_probe_tries = tries
+            logger.info('Builder Base walls: reading the wall prices (look %d of %d)', tries, _BB_WALL_PROBE_TRIES)
+        probing = not costs
+        self._wall_walk_reached_end = False
         cb = getattr(self, '_status_callback', None)
         if cb:
             cb('Builder Base: upgrading walls...')
@@ -803,6 +810,17 @@ deselect, which would eat the upcoming Attack click.'''
             rounds += 1
         if rounds:
             logger.info('Builder Base walls: %d batch(es) confirmed this check', rounds)
+        if probing and not getattr(self, '_wall_costs', None):
+            # Still no price. Give up only when the walk read the whole list (no Wall row
+            # there) or after _BB_WALL_PROBE_TRIES looks; otherwise look again next check.
+            if getattr(self, '_wall_walk_reached_end', False):
+                self._bb_wall_probed = True
+                logger.info('Builder Base walls: no Wall row in the whole Build list — no BB walls to upgrade this run')
+            elif self._bb_wall_probe_tries >= _BB_WALL_PROBE_TRIES:
+                self._bb_wall_probed = True
+                logger.info('Builder Base walls: wall prices not read after %d looks — BB walls off for this run', self._bb_wall_probe_tries)
+            else:
+                logger.info('Builder Base walls: wall prices not read yet — looking again at the next check')
         return None
 
     def _maybe_auto_upgrade(self, force = False):
@@ -1245,6 +1263,7 @@ deselect, which would eat the upcoming Attack click.'''
         consecutive frames agreeing on its y — the list eases after each wheel
         nudge), or None with the panel closed again. Levels the loot cannot pay are
         skipped, so a cheaper level further down still gets bought.'''
+        self._wall_walk_reached_end = False
         triplet = self._read_hud_triplet_stable()  # home screen, before the panel covers it
         panel = BuildPanel(self)
         if not panel.open(reset_to_top = True):
@@ -1289,6 +1308,7 @@ deselect, which would eat the upcoming Attack click.'''
             if still >= _WALL_PANEL_END_STILL_NUDGES:
                 reached_end = True  # this frame was already read before the nudge
                 break
+        self._wall_walk_reached_end = reached_end
         if seen and reached_end:
             # Whole list walked from the top: these are exactly the levels left — drop
             # any saved level finished since (it would keep the pre-check opening the
@@ -1335,6 +1355,7 @@ deselect, which would eat the upcoming Attack click.'''
             panel.wait_list_settled()  # until the list stops easing, not a fixed 0.6 s
             if self.stop_event.is_set():
                 return None
+        self._wall_walk_reached_end = reached_end
         if seen and reached_end:
             self._wall_costs = set(seen)  # whole list seen: exactly the levels left
         if not payable:
@@ -1716,6 +1737,7 @@ deselect, which would eat the upcoming Attack click.'''
         self._wall_cost_resource = {}
         self._wall_gold_only_costs = set()
         self._bb_wall_probed = False
+        self._bb_wall_probe_tries = 0
         cb = getattr(self, '_status_callback', None)
         if self.stop_event.wait(1):
             return None
